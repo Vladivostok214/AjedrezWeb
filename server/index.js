@@ -26,10 +26,13 @@ wss.on('connection', (ws) => {
   ws.roomId = null;
   ws.color = null;
 
-  ws.on('message', (message) => {
+  ws.on('message', (data) => {
     try {
+      const message = data.toString();
       const { type, payload } = JSON.parse(message);
       
+      console.log(`[WS] Mensaje recibido: ${type}`, payload);
+
       switch (type) {
         case 'join': {
           const { roomId } = payload;
@@ -46,11 +49,12 @@ wss.on('connection', (ws) => {
               gameOver: false
             };
             rooms.set(roomId, room);
+            console.log(`[ROOM] Nueva sala creada: ${roomId}`);
           }
 
           // Restringir a un máximo estricto de 2 jugadores (1v1)
           if (room.players.size >= 2) {
-            console.log(`Sala ${roomId} llena. Rechazando nuevo cliente.`);
+            console.log(`[ROOM] Sala ${roomId} llena. Rechazando nuevo cliente.`);
             ws.send(JSON.stringify({ type: 'room-full', payload: { roomId } }));
             ws.close();
             return;
@@ -59,10 +63,11 @@ wss.on('connection', (ws) => {
           ws.roomId = roomId;
           room.players.add(ws);
 
-          console.log(`Jugador se unió a la sala ${roomId}. Jugadores activos: ${room.players.size}`);
+          console.log(`[ROOM] Jugador se unió a ${roomId}. Total: ${room.players.size}`);
 
           // --- CASO A: Es la primera conexión a la sala ---
           if (room.players.size === 1) {
+            console.log(`[ROOM] ${roomId}: Enviando status CASO A (Esperando rival)`);
             ws.send(JSON.stringify({
               type: 'room-status',
               payload: { color: 'white', roomId, opponentPresent: false, waiting: true, playerCount: 1 }
@@ -79,7 +84,7 @@ wss.on('connection', (ws) => {
             playersArray[1].color = guestColor;
             room.colorsAssigned = true;
 
-            console.log(`Sorteo de colores realizado en sala ${roomId}. Host: ${hostColor}, Guest: ${guestColor}`);
+            console.log(`[ROOM] ${roomId}: Enviando status CASO B (Partida lista). Colores: 0=${hostColor}, 1=${guestColor}`);
 
             playersArray[0].send(JSON.stringify({
               type: 'room-status',
@@ -102,7 +107,7 @@ wss.on('connection', (ws) => {
             const assignedColor = otherPlayer.color === 'white' ? 'black' : 'white';
             ws.color = assignedColor;
 
-            console.log(`Jugador reconectado en sala ${roomId}. Color asignado: ${assignedColor}. Estado partida: ${room.gameOver ? 'terminada' : 'en curso'}`);
+            console.log(`[ROOM] ${roomId}: Enviando status CASO C (Reconexión). Color: ${assignedColor}`);
 
             // Informar al jugador que se reconecta su color y el estado actual
             ws.send(JSON.stringify({
