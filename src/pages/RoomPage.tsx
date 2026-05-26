@@ -413,6 +413,7 @@ export const RoomPage: React.FC = () => {
     
     chess.forceResign(winnerColor);
     showNotification('🏳️ Te has rendido', 'resign');
+    setRightDrawerOpen(false);
   };
 
   // Enviar mensaje de chat local
@@ -749,16 +750,7 @@ export const RoomPage: React.FC = () => {
 
         <div className="pt-2 border-t border-white/5">
           <GameControls 
-            onResign={() => {
-              if (chess.isGameOver) return; // Prevenir doble clic
-              const winnerColor = playerColor === 'white' ? 'black' : 'white';
-              chess.forceResign(winnerColor);
-              showNotification('🏳️ Te has rendido', 'resign');
-              if (!isAiMode) {
-                sendMessage('game-resign', {});
-              }
-              setRightDrawerOpen(false);
-            }}
+            onResign={handleResign}
             onOfferDraw={() => {
               if (isAiMode) {
                 alert('La computadora ha declinado la oferta de tablas.');
