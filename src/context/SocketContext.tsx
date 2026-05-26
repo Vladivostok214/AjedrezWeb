@@ -52,7 +52,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // URL del servidor WebSocket (soportando configuraciones de prod y dev)
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const defaultWsUrl = `${wsProtocol}//${window.location.hostname}:3001`;
-    const wsUrl = import.meta.env.VITE_SIGNALING_URL || defaultWsUrl;
+    let wsUrl = import.meta.env.VITE_SIGNALING_URL || defaultWsUrl;
+    // Sanitizar la URL para prevenir errores tipográficos (como wsss://, o ingresar http/https por error)
+    wsUrl = wsUrl
+      .replace(/^https:/i, 'wss:')
+      .replace(/^http:/i, 'ws:')
+      .replace(/^wsss:/i, 'wss:');
 
     const connect = () => {
       console.log(`Conectando al servidor de señalización WebSocket en ${wsUrl}...`);
