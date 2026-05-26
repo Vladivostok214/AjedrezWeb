@@ -206,16 +206,17 @@ export const RoomPage: React.FC = () => {
     // Estado inicial de la sala al unirse (incluyendo color y presencia)
     const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean }) => {
       console.log('Asignado color de jugador:', payload.color);
+      const { chess: curChess } = stateRef.current;
       latestColorRef.current = payload.color;
       setPlayerColor(payload.color);
-      chess.setBoardOrientation(payload.color);
+      curChess.setBoardOrientation(payload.color);
       
       if (payload.waiting) {
         setOpponentPresent(false);
       } else if (payload.opponentPresent) {
         setOpponentPresent(true);
         // Si el oponente se conecta y el juego no ha empezado, barajar colores
-        if (chess.history.length === 0) {
+        if (curChess.history.length === 0) {
           triggerColorDraw(payload.color);
         }
       }
@@ -849,6 +850,21 @@ export const RoomPage: React.FC = () => {
                         Juegas con Negras
                       </h3>
                       <p className="text-sm text-accent-violet font-semibold mt-2 animate-pulse">
+                        El rival inicia la partida ⚫
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+t-semibold mt-2 animate-pulse">
                         El rival inicia la partida ⚫
                       </p>
                     </div>

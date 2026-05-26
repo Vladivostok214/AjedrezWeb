@@ -75,8 +75,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ws.onopen = () => {
         console.log('Señalización WebSocket conectada exitosamente.');
         setConnected(true);
-        // Enviamos evento "join" inmediatamente
-        ws.send(JSON.stringify({ type: 'join', payload: { roomId } }));
+        // El mensaje "join" ahora lo envía el consumidor (RoomPage) 
+        // para asegurar que sus handlers estén registrados antes.
       };
 
       ws.onmessage = (event) => {
