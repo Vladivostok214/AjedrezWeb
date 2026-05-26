@@ -530,9 +530,7 @@ export const RoomPage: React.FC = () => {
       {/* --- DRAWERS LATERALES (MÓVIL) --- */}
 
       {/* Drawer Izquierdo - Historial */}
-      <div className={`fixed inset-y-0 left-0 z-40 w-[280px] sm:w-[320px] bg-neutral-950/95 border-r border-white/10 p-6 flex flex-col transition-transform duration-300 transform ${
-        leftDrawerOpen ? 'translate-x-0' : '-translate-x-full'
-      } lg:hidden backdrop-blur-md`}>
+      <div className={`drawer-left ${leftDrawerOpen ? 'open' : ''}`}>
         <div className="flex justify-between items-center mb-6 pb-2 border-b border-white/5">
           <span className="text-sm font-bold text-white uppercase tracking-wider font-display">Historial de Jugadas</span>
           <button 
@@ -567,9 +565,7 @@ export const RoomPage: React.FC = () => {
       </div>
 
       {/* Drawer Derecho - Chat y Acciones */}
-      <div className={`fixed inset-y-0 right-0 z-40 w-[300px] sm:w-[360px] bg-neutral-950/95 border-l border-white/10 p-6 flex flex-col gap-4 transition-transform duration-300 transform ${
-        rightDrawerOpen ? 'translate-x-0' : '-translate-x-full'
-      } lg:hidden backdrop-blur-md`}>
+      <div className={`drawer-right ${rightDrawerOpen ? 'open' : ''}`}>
         <div className="flex justify-between items-center pb-2 border-b border-white/5">
           <span className="text-sm font-bold text-white uppercase tracking-wider font-display">Chat y Controles</span>
           <button 
