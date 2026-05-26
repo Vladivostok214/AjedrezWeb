@@ -376,6 +376,14 @@ export const RoomPage: React.FC = () => {
     };
   }, [isAiMode, registerHandler]);
 
+  // Efecto para enviar el comando "join" una vez el socket esté conectado y los handlers listos
+  useEffect(() => {
+    if (isAiMode || !socketConnected || !roomId) return;
+    
+    console.log(`[NET] Intentando unirse a sala: ${roomId} (Socket: ${socketConnected})`);
+    sendMessage('join', { roomId });
+  }, [isAiMode, socketConnected, roomId, sendMessage]);
+
   // Manejar el movimiento local de piezas y enviarlo por la red
   const handlePieceDrop = (sourceSquare: string, targetSquare: string, piece: string) => {
     if (chess.isGameOver) return false;
