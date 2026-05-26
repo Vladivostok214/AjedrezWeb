@@ -245,8 +245,7 @@ export const RoomPage: React.FC = () => {
     // wasGameOver: el servidor indica si la partida ya había terminado formalmente (por rendición)
     // Si el juego local aún no ha terminado, forzamos la victoria por abandono independientemente del flag,
     // actuando como un mecanismo de seguridad (fail-safe) si el mensaje 'game-resign' se perdió o llegó tarde.
-    const unsubLeft = registerHandler('peer-left', (payload: { wasGameOver?: boolean, resignedColor?: string }) => {
-      const wasGameOver = payload?.wasGameOver === true;
+    const unsubLeft = registerHandler('peer-left', (payload: { resignedColor?: string }) => {
       const { playerColor: curColor, chess: curChess } = stateRef.current;
       
       setOpponentPresent(false);
