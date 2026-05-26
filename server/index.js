@@ -166,7 +166,9 @@ wss.on('connection', (ws) => {
         // Reenvío directo (Broker) de jugadas y chat al oponente en la misma sala
         case 'chess-move':
         case 'chat-message':
-        case 'peer-left': {
+        case 'peer-left':
+        case 'rematch-request':
+        case 'rematch-decline': {
           const { roomId } = ws;
           if (!roomId) return;
 

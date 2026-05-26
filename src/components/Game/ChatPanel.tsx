@@ -33,7 +33,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-[280px] glass-panel rounded-2xl overflow-hidden border border-white/5 bg-black/40">
+    <div className="flex flex-col h-full glass-panel rounded-2xl overflow-hidden border border-white/5 bg-black/40">
       {/* Cabecera del Chat */}
       <div className="px-4 py-2 border-b border-white/5 bg-white/5 flex justify-between items-center">
         <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Chat de Partida</span>
