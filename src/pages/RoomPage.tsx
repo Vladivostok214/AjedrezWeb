@@ -1,4 +1,4 @@
-// SOTA Chess client v1.2.0 - Updated May 26 2026
+// SOTA Chess client v1.3.0 - Updated May 26 2026
 import React, { useEffect, useState, useRef } from 'react';
 import { BoardWrapper } from '../components/Game/BoardWrapper';
 import { GameStatus } from '../components/Game/GameStatus';
@@ -61,36 +61,56 @@ export const RoomPage: React.FC = () => {
     if (notification) {
       const timer = setTimeout(() => {
         setNotification(null);
-      }, 2000);
+      }, 2500); // 2.5 segundos para mejor legibilidad
       return () => clearTimeout(timer);
     }
   }, [notification]);
 
-  // Efecto reactivo para mostrar notificaciones flotantes de estado de juego (Jaque, Mate, Abandono, etc.)
+  // 1. Efecto reactivo para mostrar notificaciones flotantes de fin de partida personalizadas al color
+  useEffect(() => {
+    if (!chess.isGameOver) return;
+
+    const reason = chess.gameOverReason || '';
+    const isWhiteWinner = reason.toLowerCase().includes('blancas') || reason.toLowerCase().includes('ganaste tú');
+    const isBlackWinner = reason.toLowerCase().includes('negras') || reason.toLowerCase().includes('computadora');
+
+    if (reason.toLowerCase().includes('mate')) {
+      if (playerColor === 'white') {
+        showNotification(isWhiteWinner ? '🏆 ¡Ganaste por Jaque Mate!' : '💀 ¡Derrota por Jaque Mate!', 'mate');
+      } else {
+        showNotification(isBlackWinner ? '🏆 ¡Ganaste por Jaque Mate!' : '💀 ¡Derrota por Jaque Mate!', 'mate');
+      }
+    } else if (reason.toLowerCase().includes('abandono') || reason.toLowerCase().includes('resign')) {
+      if (playerColor === 'white') {
+        showNotification(isWhiteWinner ? '🏆 ¡Ganaste por abandono!' : '🏳️ Te has rendido', 'resign');
+      } else {
+        showNotification(isBlackWinner ? '🏆 ¡Ganaste por abandono!' : '🏳️ Te has rendido', 'resign');
+      }
+    } else if (reason.toLowerCase().includes('tiempo') || reason.toLowerCase().includes('out')) {
+      if (playerColor === 'white') {
+        showNotification(isWhiteWinner ? '🏆 Ganaste por tiempo' : '⏰ Se te agotó el tiempo (Derrota)', 'info');
+      } else {
+        showNotification(isBlackWinner ? '🏆 Ganaste por tiempo' : '⏰ Se te agotó el tiempo (Derrota)', 'info');
+      }
+    } else {
+      showNotification('🏁 Partida finalizada en tablas', 'draw');
+    }
+  }, [chess.isGameOver, chess.gameOverReason, playerColor]);
+
+  // 2. Efecto para notificaciones de Jaque (Check) durante el juego activo (Escuchando FEN)
   const lastFenRef = useRef<string>('');
   
   useEffect(() => {
     if (chess.fen === lastFenRef.current) return;
     lastFenRef.current = chess.fen;
 
-    // Evitar notificaciones al inicio de la partida
-    if (chess.history.length === 0) return;
+    // Evitar notificaciones si la partida no ha empezado o ya finalizó
+    if (chess.history.length === 0 || chess.isGameOver) return;
 
-    if (chess.isGameOver) {
-      const reason = chess.gameOverReason || '';
-      if (reason.toLowerCase().includes('mate')) {
-        showNotification('🏆 ¡Jaque Mate!', 'mate');
-      } else if (reason.toLowerCase().includes('abandono') || reason.toLowerCase().includes('resign')) {
-        showNotification('🏳️ El rival se ha rendido', 'resign');
-      } else if (reason.toLowerCase().includes('tiempo') || reason.toLowerCase().includes('out')) {
-        showNotification('⏰ Tiempo agotado', 'info');
-      } else {
-        showNotification('🏁 Fin de la partida', 'info');
-      }
-    } else if (chess.inCheck) {
+    if (chess.inCheck) {
       showNotification('💥 ¡Jaque!', 'check');
     }
-  }, [chess.fen, chess.isGameOver, chess.gameOverReason, chess.inCheck, chess.history.length]);
+  }, [chess.fen, chess.isGameOver, chess.inCheck, chess.history.length]);
 
   // Control de redimensionamiento
   useEffect(() => {
@@ -278,6 +298,12 @@ export const RoomPage: React.FC = () => {
     const unsubRematchReq = registerHandler('rematch-request', () => {
       console.log('El oponente ha solicitado una revancha.');
       setHasRematchRequest(true);
+      showNotification('✉️ Solicitud de Revancha', 'info');
+      setChatMessages(prev => [...prev, {
+        sender: 'sistema',
+        text: 'El rival ha solicitado una revancha. ¿Aceptar?',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
     });
 
     // Recibir rechazo de revancha
