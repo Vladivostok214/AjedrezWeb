@@ -9,7 +9,8 @@ import { useSocket } from '../context/SocketContext';
 import { formatTime } from '../utils';
 
 export const RoomPage: React.FC = () => {
-  const pathSegments = window.location.pathname.split('/').filter(Boolean);
+  const fullPath = window.location.pathname.split('?')[0].split('#')[0];
+  const pathSegments = fullPath.split('/').filter(Boolean);
   const roomId = pathSegments[pathSegments.length - 1] || '';
   const isAiMode = roomId === 'offline-ai';
   
@@ -871,5 +872,8 @@ export const RoomPage: React.FC = () => {
       )}
 
     </div>
+  );
+};
+ </div>
   );
 };
