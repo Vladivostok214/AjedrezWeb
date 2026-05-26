@@ -1,4 +1,4 @@
-// SOTA Chess client v1.3.0 - Updated May 26 2026
+// SOTA Chess client v1.5.0 - Updated May 26 2026
 import React, { useEffect, useState, useRef } from 'react';
 import { BoardWrapper } from '../components/Game/BoardWrapper';
 import { GameStatus } from '../components/Game/GameStatus';
@@ -56,12 +56,12 @@ export const RoomPage: React.FC = () => {
     setNotification({ text, type });
   };
 
-  // Limpiar la notificación flotante automáticamente después de 2 segundos
+  // Limpiar la notificación flotante automáticamente después de 2.5 segundos
   useEffect(() => {
     if (notification) {
       const timer = setTimeout(() => {
         setNotification(null);
-      }, 2500); // 2.5 segundos para mejor legibilidad
+      }, 2500);
       return () => clearTimeout(timer);
     }
   }, [notification]);
@@ -71,28 +71,24 @@ export const RoomPage: React.FC = () => {
     if (!chess.isGameOver) return;
 
     const reason = chess.gameOverReason || '';
-    const isWhiteWinner = reason.toLowerCase().includes('blancas') || reason.toLowerCase().includes('ganaste tú');
-    const isBlackWinner = reason.toLowerCase().includes('negras') || reason.toLowerCase().includes('computadora');
+    const lowerReason = reason.toLowerCase();
 
-    if (reason.toLowerCase().includes('mate')) {
-      if (playerColor === 'white') {
-        showNotification(isWhiteWinner ? '🏆 ¡Ganaste por Jaque Mate!' : '💀 ¡Derrota por Jaque Mate!', 'mate');
-      } else {
-        showNotification(isBlackWinner ? '🏆 ¡Ganaste por Jaque Mate!' : '💀 ¡Derrota por Jaque Mate!', 'mate');
-      }
-    } else if (reason.toLowerCase().includes('abandono') || reason.toLowerCase().includes('resign')) {
-      if (playerColor === 'white') {
-        showNotification(isWhiteWinner ? '🏆 ¡Ganaste por abandono!' : '🏳️ Te has rendido', 'resign');
-      } else {
-        showNotification(isBlackWinner ? '🏆 ¡Ganaste por abandono!' : '🏳️ Te has rendido', 'resign');
-      }
-    } else if (reason.toLowerCase().includes('tiempo') || reason.toLowerCase().includes('out')) {
-      if (playerColor === 'white') {
-        showNotification(isWhiteWinner ? '🏆 Ganaste por tiempo' : '⏰ Se te agotó el tiempo (Derrota)', 'info');
-      } else {
-        showNotification(isBlackWinner ? '🏆 Ganaste por tiempo' : '⏰ Se te agotó el tiempo (Derrota)', 'info');
-      }
-    } else {
+    if (lowerReason.includes('mate') || lowerReason.includes('jaque')) {
+      // En modo online usamos patrón 'ganan blancas' / 'ganan negras'
+      const whiteWins = lowerReason.includes('ganan blancas') || lowerReason.includes('ganaste tú');
+      const blackWins = lowerReason.includes('ganan negras') || lowerReason.includes('computadora');
+      const iWin = (playerColor === 'white' && whiteWins) || (playerColor === 'black' && blackWins);
+      showNotification(iWin ? '🏆 ¡Ganaste por Jaque Mate!' : '💀 ¡Derrota por Jaque Mate!', 'mate');
+    } else if (lowerReason.includes('abandono')) {
+      // forceResign(winnerColor) → reason = 'Abandono (Ganan Blancas)' o 'Abandono (Ganan Negras)'
+      const whiteWins = lowerReason.includes('ganan blancas');
+      const iWin = (playerColor === 'white' && whiteWins) || (playerColor === 'black' && !whiteWins);
+      showNotification(iWin ? '🏆 ¡Ganaste por abandono!' : '🏳️ Te has rendido', 'resign');
+    } else if (lowerReason.includes('tiempo')) {
+      const whiteWins = lowerReason.includes('ganan blancas');
+      const iWin = (playerColor === 'white' && whiteWins) || (playerColor === 'black' && !whiteWins);
+      showNotification(iWin ? '🏆 ¡Ganaste por tiempo!' : '⏰ ¡Se te agotó el tiempo!', 'info');
+    } else if (lowerReason.includes('tablas') || lowerReason.includes('draw')) {
       showNotification('🏁 Partida finalizada en tablas', 'draw');
     }
   }, [chess.isGameOver, chess.gameOverReason, playerColor]);
@@ -241,20 +237,35 @@ export const RoomPage: React.FC = () => {
       }]);
     });
 
-    // Oponente abandonó la sala o se desconectó
-    const unsubLeft = registerHandler('peer-left', (payload?: { reason?: string }) => {
-      console.log('Oponente desconectado.');
+    // Oponente abandonó la sala o se desconectó físicamente
+    const unsubLeft = registerHandler('peer-left', () => {
+      console.log('Oponente desconectado físicamente.');
       setOpponentPresent(false);
       
-      const isResign = payload?.reason === 'resign';
       setChatMessages(prev => [...prev, {
         sender: 'sistema',
-        text: isResign ? 'El oponente se ha rendido.' : 'El oponente se desconectó de la sala.',
+        text: 'El oponente se desconectó de la sala.',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
 
       const { playerColor: curColor, chess: curChess } = stateRef.current;
+      // Victoria por abandono técnico al desconectarse el oponente
       curChess.forceResign(curColor);
+    });
+
+    // Recibir rendición del rival de forma administrativa (sin desconectarse)
+    const unsubResign = registerHandler('game-resign', () => {
+      console.log('El oponente se rindió formalmente.');
+      const { playerColor: curColor, chess: curChess } = stateRef.current;
+      // curColor es nuestro color → somos el ganador
+      curChess.forceResign(curColor);
+      // Mostrar notificación de victoria inmediata (no esperar el efecto de isGameOver)
+      showNotification('🏆 ¡Ganaste por abandono!', 'resign');
+      setChatMessages(prev => [...prev, {
+        sender: 'sistema',
+        text: '🏳️ El oponente se ha rendido. ¡Has ganado la partida!',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
     });
 
     // Recibir movimiento de ajedrez del rival
@@ -321,6 +332,7 @@ export const RoomPage: React.FC = () => {
       unsubStatus();
       unsubJoined();
       unsubLeft();
+      unsubResign();
       unsubChessMove();
       unsubChatMsg();
       unsubReset();
@@ -611,7 +623,7 @@ export const RoomPage: React.FC = () => {
                   const winnerColor = playerColor === 'white' ? 'black' : 'white';
                   chess.forceResign(winnerColor);
                   if (!isAiMode) {
-                    sendMessage('peer-left', { reason: 'resign' });
+                    sendMessage('game-resign', {});
                   }
                 }}
                 onOfferDraw={() => {
@@ -696,7 +708,7 @@ export const RoomPage: React.FC = () => {
               const winnerColor = playerColor === 'white' ? 'black' : 'white';
               chess.forceResign(winnerColor);
               if (!isAiMode) {
-                sendMessage('peer-left', { reason: 'resign' });
+                sendMessage('game-resign', {});
               }
               setRightDrawerOpen(false);
             }}

@@ -16,7 +16,7 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-// Mapa de salas en memoria: roomId (string) -> { players: Set, colorsAssigned: boolean }
+// Mapa de salas en memoria: roomId (string) -> { players: Set, colorsAssigned: boolean, gameOver: boolean }
 const rooms = new Map();
 
 wss.on('connection', (ws) => {
@@ -41,7 +41,8 @@ wss.on('connection', (ws) => {
           if (!room) {
             room = {
               players: new Set(),
-              colorsAssigned: false
+              colorsAssigned: false,
+              gameOver: false
             };
             rooms.set(roomId, room);
           }
@@ -134,6 +135,7 @@ wss.on('connection', (ws) => {
           playersArray[0].color = hostColor;
           playersArray[1].color = guestColor;
           room.colorsAssigned = true;
+          room.gameOver = false; // Resetear flag de fin de partida
 
           console.log(`Nuevo sorteo de colores por reinicio en sala ${roomId}. Host: ${hostColor}, Guest: ${guestColor}`);
 
@@ -163,6 +165,25 @@ wss.on('connection', (ws) => {
           break;
         }
 
+        // Marcar la partida como terminada al recibir rendición formal
+        case 'game-resign': {
+          const { roomId } = ws;
+          if (!roomId) return;
+          const room = rooms.get(roomId);
+          if (!room) return;
+
+          room.gameOver = true;
+          console.log(`Jugador se rindió en sala ${roomId}. La sala permanece abierta para revancha.`);
+
+          // Reenviar la rendición al oponente
+          for (const client of room.players) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ type: 'game-resign', payload: {} }));
+            }
+          }
+          break;
+        }
+
         // Reenvío directo (Broker) de jugadas y chat al oponente en la misma sala
         default: {
           // Reenvío directo (Broker) de cualquier otro mensaje al oponente en la misma sala
@@ -173,7 +194,7 @@ wss.on('connection', (ws) => {
           if (!room) return;
 
           for (const client of room.players) {
-            if (client !== ws && client.readyState === ws.OPEN) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
               client.send(JSON.stringify({ type, payload }));
             }
           }
@@ -199,11 +220,16 @@ wss.on('connection', (ws) => {
           rooms.delete(roomId);
           console.log(`Sala ${roomId} vaciada y eliminada de memoria.`);
         } else {
-          // Notificar al rival remanente
-          for (const client of room.players) {
-            if (client.readyState === ws.OPEN) {
-              client.send(JSON.stringify({ type: 'peer-left' }));
+          // Solo notificar 'peer-left' si la partida NO terminó formalmente por rendición.
+          // Esto evita que el oponente marque como desconectado a quien simplemente se rindió.
+          if (!room.gameOver) {
+            for (const client of room.players) {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({ type: 'peer-left' }));
+              }
             }
+          } else {
+            console.log(`Sala ${roomId}: jugador cerró conexión post-partida. Sala abierta para revancha.`);
           }
         }
       }
