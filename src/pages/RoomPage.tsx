@@ -204,29 +204,20 @@ export const RoomPage: React.FC = () => {
     if (isAiMode) return;
 
     // Estado inicial de la sala al unirse (incluyendo color y presencia)
-    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean, gameOver?: boolean }) => {
+    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean }) => {
       console.log('Asignado color de jugador:', payload.color);
-      const { chess: curChess } = stateRef.current;
       latestColorRef.current = payload.color;
       setPlayerColor(payload.color);
-      curChess.setBoardOrientation(payload.color);
+      chess.setBoardOrientation(payload.color);
       
       if (payload.waiting) {
         setOpponentPresent(false);
       } else if (payload.opponentPresent) {
         setOpponentPresent(true);
         // Si el oponente se conecta y el juego no ha empezado, barajar colores
-        if (curChess.history.length === 0) {
+        if (chess.history.length === 0) {
           triggerColorDraw(payload.color);
         }
-      }
-
-      // RECONEXIÓN: Si el servidor dice que la partida ya terminó, forzamos el estado localmente
-      if (payload.gameOver && !curChess.isGameOver) {
-        console.log('Sincronizando estado de fin de partida tras reconexión.');
-        // Al reconectar no sabemos quién ganó exactamente solo por el flag, 
-        // pero marcar isGameOver habilita los botones de revancha.
-        curChess.forceResign(payload.color); // Color local como 'ganador' para habilitar UI
       }
     });
 
