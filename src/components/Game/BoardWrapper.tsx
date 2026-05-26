@@ -25,8 +25,8 @@ export const BoardWrapper: React.FC<BoardWrapperProps> = ({
       overflow: 'hidden',
       boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8)'
     },
-    darkSquareStyle: { backgroundColor: '#2d3748' }, // Color pizarra oscuro elegante
-    lightSquareStyle: { backgroundColor: '#e2e8f0' }, // Slate claro limpio
+    darkSquareStyle: { backgroundColor: '#1c191f' }, // Grafito/carbón oscuro Noir-Tech
+    lightSquareStyle: { backgroundColor: '#ebe9f0' }, // Platino claro premium
     allowDragging: true
   };
 
