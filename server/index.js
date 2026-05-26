@@ -163,8 +163,11 @@ wss.on('connection', (ws) => {
       const room = rooms.get(roomId);
       if (room) {
         room.players.delete(ws);
+        console.log(`[V2.0.0-FIX] Cliente desconectado en sala ${roomId} (${color}). Restantes: ${room.players.size}`);
+        
         if (room.players.size === 0) {
           rooms.delete(roomId);
+          console.log(`[V2.0.0-FIX] SALA ELIMINADA: ${roomId} por falta de jugadores.`);
         } else {
           for (const client of room.players) {
             if (client.readyState === WebSocket.OPEN) {
