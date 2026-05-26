@@ -349,9 +349,17 @@ export const RoomPage: React.FC = () => {
       }]);
     });
 
+    // Sala llena
+    const unsubFull = registerHandler('room-full', (payload: { roomId: string }) => {
+      console.warn(`La sala ${payload.roomId} está llena.`);
+      alert(`La sala ${payload.roomId} ya tiene dos jugadores. Serás redirigido al inicio.`);
+      window.location.href = '/';
+    });
+
     return () => {
       unsubStatus();
       unsubJoined();
+      unsubFull();
       unsubLeft();
       unsubResign();
       unsubChessMove();
@@ -533,7 +541,7 @@ export const RoomPage: React.FC = () => {
             </span>
           </div>
           {!isAiMode && (
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="flex items-center gap-1.5 mt-0.5" title={`Conectando a: ${import.meta.env.VITE_SIGNALING_URL || 'Localhost:3001'}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className="text-[9px] text-gray-400">
                 {socketConnected ? 'Conectado' : 'Reconectando...'}

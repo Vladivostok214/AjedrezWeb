@@ -59,7 +59,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let reconnectTimeout: number;
     // URL del servidor WebSocket (soportando configuraciones de prod y dev)
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const defaultWsUrl = `${wsProtocol}//${window.location.hostname}:3001`;
+    
+    if (!import.meta.env.VITE_SIGNALING_URL && !isLocalhost) {
+      console.error('CRÍTICO: VITE_SIGNALING_URL no está definida. Las conexiones WebSocket fallarán en producción.');
+    }
+
     let wsUrl = import.meta.env.VITE_SIGNALING_URL || defaultWsUrl;
     // Sanitizar la URL para prevenir errores tipográficos (como wsss://, o ingresar http/https por error)
     wsUrl = wsUrl
