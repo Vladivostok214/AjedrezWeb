@@ -177,4 +177,4 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
+server.listen(PORT, () => console.log(`[V2.0.0-FIX] Servidor en puerto ${PORT}`));
