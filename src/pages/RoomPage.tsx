@@ -207,12 +207,16 @@ export const RoomPage: React.FC = () => {
     if (isAiMode) return;
 
     // Estado inicial de la sala al unirse (incluyendo color y presencia)
-    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean }) => {
-      console.log('Asignado color de jugador:', payload.color, 'en sala:', roomId);
+    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean, playerCount?: number }) => {
+      console.log('Asignado color de jugador:', payload.color, 'en sala:', roomId, 'Status:', payload);
       const { chess: curChess } = stateRef.current;
       latestColorRef.current = payload.color;
       setPlayerColor(payload.color);
       curChess.setBoardOrientation(payload.color);
+
+      if (payload.playerCount !== undefined) {
+        setRoomPlayerCount(payload.playerCount);
+      }
       
       if (payload.waiting) {
         setOpponentPresent(false);
