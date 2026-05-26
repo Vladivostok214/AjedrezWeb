@@ -88,13 +88,14 @@ wss.on('connection', (ws) => {
           if (!room) return;
 
           room.gameOver = true;
-          console.log(`[ROOM] ${roomId}: Rendición de ${color}`);
+          console.log(`[ROOM] ${roomId}: Rendición de ${color}. Notificando al rival...`);
 
-          for (const client of room.players) {
+          room.players.forEach(client => {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
               client.send(JSON.stringify({ type: 'game-resign', payload: { resignedColor: color } }));
+              console.log(`[ROOM] ${roomId}: Mensaje de victoria enviado a ${client.color}`);
             }
-          }
+          });
           break;
         }
 
@@ -111,6 +112,8 @@ wss.on('connection', (ws) => {
           playersArray[1].color = guestColor;
           room.gameOver = false;
 
+          console.log(`[ROOM] ${roomId}: Nueva partida. Colores sorteados.`);
+
           playersArray[0].send(JSON.stringify({
             type: 'room-status', payload: { color: hostColor, roomId, opponentPresent: true, playerCount: 2 }
           }));
@@ -118,9 +121,11 @@ wss.on('connection', (ws) => {
             type: 'room-status', payload: { color: guestColor, roomId, opponentPresent: true, playerCount: 2 }
           }));
 
-          for (const client of room.players) {
-            client.send(JSON.stringify({ type: 'reset-game' }));
-          }
+          room.players.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ type: 'reset-game' }));
+            }
+          });
           break;
         }
 
@@ -130,13 +135,20 @@ wss.on('connection', (ws) => {
         }
 
         default: {
-          const room = rooms.get(ws.roomId);
-          if (!room) return;
-          for (const client of room.players) {
+          const { roomId, color } = ws;
+          const room = rooms.get(roomId);
+          if (!room) {
+            console.warn(`[WS] Intento de broadcast (${type}) en sala no válida: ${roomId}`);
+            return;
+          }
+          
+          console.log(`[WS] Reenviando ${type} de ${color} al rival en sala ${roomId}`);
+
+          room.players.forEach(client => {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
               client.send(JSON.stringify({ type, payload }));
             }
-          }
+          });
           break;
         }
       }
