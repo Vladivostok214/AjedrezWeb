@@ -22,6 +22,7 @@ export const RoomPage: React.FC = () => {
 
   const [playerColor, setPlayerColor] = useState<'white' | 'black'>('white');
   const [opponentPresent, setOpponentPresent] = useState<boolean>(false);
+  const [roomPlayerCount, setRoomPlayerCount] = useState<number>(0);
   const [copyFeedback, setCopyFeedback] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
