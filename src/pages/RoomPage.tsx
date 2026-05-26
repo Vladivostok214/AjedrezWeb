@@ -204,7 +204,7 @@ export const RoomPage: React.FC = () => {
     if (isAiMode) return;
 
     // Estado inicial de la sala al unirse (incluyendo color y presencia)
-    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean }) => {
+    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean, gameOver?: boolean }) => {
       console.log('Asignado color de jugador:', payload.color);
       const { chess: curChess } = stateRef.current;
       latestColorRef.current = payload.color;
@@ -219,6 +219,14 @@ export const RoomPage: React.FC = () => {
         if (curChess.history.length === 0) {
           triggerColorDraw(payload.color);
         }
+      }
+
+      // RECONEXIÓN: Si el servidor dice que la partida ya terminó, forzamos el estado localmente
+      if (payload.gameOver && !curChess.isGameOver) {
+        console.log('Sincronizando estado de fin de partida tras reconexión.');
+        // Al reconectar no sabemos quién ganó exactamente solo por el flag, 
+        // pero marcar isGameOver habilita los botones de revancha.
+        curChess.forceResign(payload.color); // Color local como 'ganador' para habilitar UI
       }
     });
 
@@ -235,32 +243,31 @@ export const RoomPage: React.FC = () => {
 
     // Oponente se desconectó del WebSocket
     // wasGameOver: el servidor indica si la partida ya había terminado formalmente (por rendición)
-    // Si wasGameOver=true, el juego ya terminó por game-resign → solo actualizar presencia
-    // Si wasGameOver=false, es una desconexión real → declarar victoria por abandono técnico
+    // Si el juego local aún no ha terminado, forzamos la victoria por abandono independientemente del flag,
+    // actuando como un mecanismo de seguridad (fail-safe) si el mensaje 'game-resign' se perdió o llegó tarde.
     const unsubLeft = registerHandler('peer-left', (payload: { wasGameOver?: boolean, resignedColor?: string }) => {
       const wasGameOver = payload?.wasGameOver === true;
+      const { playerColor: curColor, chess: curChess } = stateRef.current;
+      
       setOpponentPresent(false);
 
-      if (wasGameOver) {
-        // La rendición ya fue procesada vía game-resign.
-        // Solo notificar que el rival cerró su sesión.
-        console.log('Rival cerró conexión post-rendición. No se re-procesa la victoria.');
+      if (!curChess.isGameOver) {
+        // SEGURIDAD: Si el rival se va y la partida sigue activa para nosotros, la terminamos.
+        console.log('Rival desconectado durante partida activa. Aplicando victoria por abandono (Fail-safe).');
+        curChess.forceResign(curColor);
+        showNotification('🏆 ¡Ganaste por abandono!', 'resign');
+        
         setChatMessages(prev => [...prev, {
           sender: 'sistema',
-          text: 'El rival ha cerrado su sesión. La revancha sigue disponible si vuelve a conectarse.',
+          text: '📡 El oponente se ha desconectado. ¡Has ganado la partida!',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       } else {
-        // Desconexión real durante la partida → victoria por abandono técnico
-        console.log('Rival desconectado durante la partida. Victoria por abandono técnico.');
-        const { playerColor: curColor, chess: curChess } = stateRef.current;
-        if (!curChess.isGameOver) {
-          curChess.forceResign(curColor);
-          showNotification('🏆 ¡Ganaste por abandono!', 'resign');
-        }
+        // La partida ya había terminado localmente (ya sea por mate, tiempo o porque recibimos game-resign justo antes)
+        console.log('Rival cerró conexión post-partida. Actualizando estado de presencia.');
         setChatMessages(prev => [...prev, {
           sender: 'sistema',
-          text: '📡 El oponente se desconectó de la sala. ¡Has ganado!',
+          text: 'El rival ha cerrado su sesión. La revancha sigue disponible si vuelve a conectarse.',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       }
@@ -392,6 +399,20 @@ export const RoomPage: React.FC = () => {
       });
     }
     return success;
+  };
+
+  const handleResign = () => {
+    if (chess.isGameOver) return; 
+    const winnerColor = playerColor === 'white' ? 'black' : 'white';
+    
+    // IMPORTANTE: Enviar el mensaje ANTES de actualizar el estado local 
+    // para asegurar que el socket sigue abierto y no hay interferencias de re-render
+    if (!isAiMode) {
+      sendMessage('game-resign', {});
+    }
+    
+    chess.forceResign(winnerColor);
+    showNotification('🏳️ Te has rendido', 'resign');
   };
 
   // Enviar mensaje de chat local
