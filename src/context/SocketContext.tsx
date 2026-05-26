@@ -16,9 +16,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const handlersRef = useRef<Map<string, Set<(payload: any) => void>>>(new Map());
   const socketRef = useRef<WebSocket | null>(null);
 
-  // Extrae el roomId de la ruta si está presente
+  // Extrae el roomId de la ruta de forma robusta (ignorando slashes finales)
   const path = window.location.pathname;
-  const roomId = path.startsWith('/room/') ? path.split('/').pop() : null;
+  const pathSegments = path.split('/').filter(Boolean);
+  const roomId = path.startsWith('/room/') ? pathSegments[pathSegments.length - 1] : null;
 
   // sendMessage es estable gracias a useCallback — no crea nuevas referencias en cada render
   const sendMessage = useCallback((type: string, payload: any) => {

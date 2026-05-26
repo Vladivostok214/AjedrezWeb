@@ -9,7 +9,8 @@ import { useSocket } from '../context/SocketContext';
 import { formatTime } from '../utils';
 
 export const RoomPage: React.FC = () => {
-  const roomId = window.location.pathname.split('/').pop() || '';
+  const pathSegments = window.location.pathname.split('/').filter(Boolean);
+  const roomId = pathSegments[pathSegments.length - 1] || '';
   const isAiMode = roomId === 'offline-ai';
   
   // Hook de ajedrez local
@@ -205,7 +206,7 @@ export const RoomPage: React.FC = () => {
 
     // Estado inicial de la sala al unirse (incluyendo color y presencia)
     const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean }) => {
-      console.log('Asignado color de jugador:', payload.color);
+      console.log('Asignado color de jugador:', payload.color, 'en sala:', roomId);
       const { chess: curChess } = stateRef.current;
       latestColorRef.current = payload.color;
       setPlayerColor(payload.color);
