@@ -1,4 +1,4 @@
-const { WebSocketServer } = require('ws');
+const { WebSocketServer, WebSocket } = require('ws');
 const http = require('http');
 
 const PORT = process.env.PORT || 3001;
@@ -16,7 +16,8 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-// Mapa de salas en memoria: roomId (string) -> { players: Set, colorsAssigned: boolean, gameOver: boolean }
+// Mapa de salas en memoria
+// Estructura: roomId -> { players: Set<ws>, colorsAssigned: boolean, gameOver: boolean }
 const rooms = new Map();
 
 wss.on('connection', (ws) => {
@@ -62,7 +63,6 @@ wss.on('connection', (ws) => {
 
           // --- CASO A: Es la primera conexión a la sala ---
           if (room.players.size === 1) {
-            // Notificamos que está esperando al rival, por defecto Blancas provisionalmente
             ws.send(JSON.stringify({
               type: 'room-status',
               payload: { color: 'white', roomId, opponentPresent: false, waiting: true }
@@ -72,7 +72,6 @@ wss.on('connection', (ws) => {
           else if (room.players.size === 2 && !room.colorsAssigned) {
             const playersArray = Array.from(room.players);
             
-            // Sorteo aleatorio inicial: el primer jugador obtiene color aleatorio, el segundo el opuesto
             const hostColor = Math.random() < 0.5 ? 'white' : 'black';
             const guestColor = hostColor === 'white' ? 'black' : 'white';
 
@@ -82,7 +81,6 @@ wss.on('connection', (ws) => {
 
             console.log(`Sorteo de colores realizado en sala ${roomId}. Host: ${hostColor}, Guest: ${guestColor}`);
 
-            // Enviar estados asignados finales a ambos jugadores
             playersArray[0].send(JSON.stringify({
               type: 'room-status',
               payload: { color: hostColor, roomId, opponentPresent: true }
@@ -93,33 +91,58 @@ wss.on('connection', (ws) => {
               payload: { color: guestColor, roomId, opponentPresent: true }
             }));
 
-            // Notificar match listo a ambos
             playersArray[0].send(JSON.stringify({ type: 'peer-joined' }));
             playersArray[1].send(JSON.stringify({ type: 'peer-joined' }));
           } 
-          // --- CASO C: Se une un jugador tras una reconexión (los colores ya están asignados) ---
+          // --- CASO C: Reconexión (colores ya asignados) ---
           else if (room.players.size === 2 && room.colorsAssigned) {
             const playersArray = Array.from(room.players);
             const otherPlayer = playersArray.find(p => p !== ws);
             
-            // Asigna el color opuesto al del jugador que ya estaba en la sala para evitar duplicidad de color
             const assignedColor = otherPlayer.color === 'white' ? 'black' : 'white';
             ws.color = assignedColor;
 
-            console.log(`Jugador reconectado en sala ${roomId}. Asignado color remanente: ${assignedColor}`);
+            console.log(`Jugador reconectado en sala ${roomId}. Color asignado: ${assignedColor}. Estado partida: ${room.gameOver ? 'terminada' : 'en curso'}`);
 
+            // Informar al jugador que se reconecta su color y el estado actual
             ws.send(JSON.stringify({
               type: 'room-status',
-              payload: { color: assignedColor, roomId, opponentPresent: true }
+              payload: { 
+                color: assignedColor, 
+                roomId, 
+                opponentPresent: true,
+                // Si la partida terminó, indicarlo para que el cliente sepa que es una revancha pendiente
+                gameOver: room.gameOver
+              }
             }));
 
-            // Notificar la presencia al oponente
+            // Notificar al oponente que el rival reconectó
             otherPlayer.send(JSON.stringify({ type: 'peer-joined' }));
           }
           break;
         }
 
-        // Ejecutar un nuevo sorteo de colores al reiniciar la partida por mutuo acuerdo
+        // Rendición formal de un jugador
+        case 'game-resign': {
+          const { roomId } = ws;
+          if (!roomId) return;
+          const room = rooms.get(roomId);
+          if (!room) return;
+
+          // Marcar la sala como partida terminada para no confundir la próxima desconexión con abandono
+          room.gameOver = true;
+          console.log(`Jugador (${ws.color}) se rindió en sala ${roomId}. Sala abierta para revancha.`);
+
+          // Reenviar la rendición al oponente directamente
+          for (const client of room.players) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ type: 'game-resign', payload: { resignedColor: ws.color } }));
+            }
+          }
+          break;
+        }
+
+        // Reinicio de partida por mutuo acuerdo (revancha aceptada)
         case 'reset-game': {
           const { roomId } = ws;
           if (!roomId) return;
@@ -135,11 +158,10 @@ wss.on('connection', (ws) => {
           playersArray[0].color = hostColor;
           playersArray[1].color = guestColor;
           room.colorsAssigned = true;
-          room.gameOver = false; // Resetear flag de fin de partida
+          room.gameOver = false;
 
-          console.log(`Nuevo sorteo de colores por reinicio en sala ${roomId}. Host: ${hostColor}, Guest: ${guestColor}`);
+          console.log(`Nueva partida en sala ${roomId}. Nuevo sorteo: Host=${hostColor}, Guest=${guestColor}`);
 
-          // Enviar nuevos roles
           playersArray[0].send(JSON.stringify({
             type: 'room-status',
             payload: { color: hostColor, roomId, opponentPresent: true }
@@ -150,43 +172,23 @@ wss.on('connection', (ws) => {
             payload: { color: guestColor, roomId, opponentPresent: true }
           }));
 
-          // Notificar el reinicio para resetear el tablero localmente
           for (const client of room.players) {
             client.send(JSON.stringify({ type: 'reset-game' }));
           }
           break;
         }
 
-        // Responder al Heartbeat del cliente para mantener la conexión viva
+        // Heartbeat
         case 'ping': {
-          if (ws.readyState === ws.OPEN) {
+          if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'pong' }));
           }
           break;
         }
 
-        // Marcar la partida como terminada al recibir rendición formal
-        case 'game-resign': {
-          const { roomId } = ws;
-          if (!roomId) return;
-          const room = rooms.get(roomId);
-          if (!room) return;
-
-          room.gameOver = true;
-          console.log(`Jugador se rindió en sala ${roomId}. La sala permanece abierta para revancha.`);
-
-          // Reenviar la rendición al oponente
-          for (const client of room.players) {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({ type: 'game-resign', payload: {} }));
-            }
-          }
-          break;
-        }
-
-        // Reenvío directo (Broker) de jugadas y chat al oponente en la misma sala
+        // Broker genérico: reenvía cualquier otro mensaje al oponente en la misma sala
+        // (chat-message, rematch-request, rematch-decline, offer-draw, chess-move, etc.)
         default: {
-          // Reenvío directo (Broker) de cualquier otro mensaje al oponente en la misma sala
           const { roomId } = ws;
           if (!roomId) return;
 
@@ -215,22 +217,22 @@ wss.on('connection', (ws) => {
       if (room) {
         room.players.delete(ws);
         
-        // Limpieza de la sala si se vacía por completo
         if (room.players.size === 0) {
           rooms.delete(roomId);
           console.log(`Sala ${roomId} vaciada y eliminada de memoria.`);
         } else {
-          // Solo notificar 'peer-left' si la partida NO terminó formalmente por rendición.
-          // Esto evita que el oponente marque como desconectado a quien simplemente se rindió.
-          if (!room.gameOver) {
-            for (const client of room.players) {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'peer-left' }));
-              }
+          // Siempre notificar al oponente que el rival cerró su conexión.
+          // El CLIENTE es responsable de distinguir si esto fue por rendición (gameOver ya true)
+          // o por desconexión real, usando su propio estado local.
+          for (const client of room.players) {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ 
+                type: 'peer-left',
+                payload: { wasGameOver: room.gameOver, resignedColor: color }
+              }));
             }
-          } else {
-            console.log(`Sala ${roomId}: jugador cerró conexión post-partida. Sala abierta para revancha.`);
           }
+          console.log(`Sala ${roomId}: notificado peer-left (wasGameOver: ${room.gameOver})`);
         }
       }
     }
