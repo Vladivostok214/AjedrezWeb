@@ -208,14 +208,18 @@ export const RoomPage: React.FC = () => {
 
     // Estado inicial de la sala al unirse (incluyendo color y presencia)
     const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean, playerCount?: number }) => {
-      console.log('Asignado color de jugador:', payload.color, 'en sala:', roomId, 'Status:', payload);
+      console.log(`[NET] Room Status Recibido:`, payload);
       const { chess: curChess } = stateRef.current;
       latestColorRef.current = payload.color;
       setPlayerColor(payload.color);
       curChess.setBoardOrientation(payload.color);
 
+      // Actualizar conteo de jugadores con fallback manual si el servidor no lo envía
       if (payload.playerCount !== undefined) {
         setRoomPlayerCount(payload.playerCount);
+      } else {
+        // Fallback: Si hay oponente presente son 2, si no es 1
+        setRoomPlayerCount(payload.opponentPresent ? 2 : 1);
       }
       
       if (payload.waiting) {
