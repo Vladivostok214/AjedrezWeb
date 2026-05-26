@@ -40,11 +40,17 @@ export const RoomPage: React.FC = () => {
   useEffect(() => {
     if (isAiMode) return;
 
-    // Estado inicial de la sala al unirse
-    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black' }) => {
+    // Estado inicial de la sala al unirse (incluyendo color y presencia)
+    const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean }) => {
       console.log('Asignado color de jugador:', payload.color);
       setPlayerColor(payload.color);
       chess.setBoardOrientation(payload.color);
+      
+      if (payload.waiting) {
+        setOpponentPresent(false);
+      } else if (payload.opponentPresent) {
+        setOpponentPresent(true);
+      }
     });
 
     // Oponente se unió a la sala
@@ -73,7 +79,6 @@ export const RoomPage: React.FC = () => {
       if (isResign) {
         chess.forceResign(playerColor);
       } else {
-        // En caso de caída de conexión, forzar abandono a favor del jugador remanente
         chess.forceResign(playerColor);
       }
     });
@@ -94,12 +99,24 @@ export const RoomPage: React.FC = () => {
       }]);
     });
 
+    // Recibir evento de reinicio de partida por mutuo acuerdo
+    const unsubReset = registerHandler('reset-game', () => {
+      console.log('Partida reiniciada.');
+      chess.resetGame();
+      setChatMessages(prev => [...prev, {
+        sender: 'sistema',
+        text: 'La partida ha sido reiniciada. Se han sorteado nuevos colores.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    });
+
     return () => {
       unsubStatus();
       unsubJoined();
       unsubLeft();
       unsubChessMove();
       unsubChatMsg();
+      unsubReset();
     };
   }, [isAiMode, registerHandler, playerColor, chess]);
 
