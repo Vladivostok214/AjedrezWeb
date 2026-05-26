@@ -18,6 +18,7 @@ export const useChessGame = () => {
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
   const [gameOverReason, setGameOverReason] = useState<string | null>(null);
   const [isAiMode, setIsAiMode] = useState<boolean>(false);
+  const [inCheck, setInCheck] = useState<boolean>(false);
   
   // Relojes de ajedrez (10 minutos por defecto = 600 segundos)
   const [clocks, setClocks] = useState({ w: 600, b: 600 });
@@ -32,6 +33,7 @@ export const useChessGame = () => {
     setFen(game.fen());
     setHistory(game.history());
     setTurn(game.turn());
+    setInCheck(game.inCheck());
     
     const over = game.isGameOver();
     setIsGameOver(over);
@@ -246,6 +248,7 @@ export const useChessGame = () => {
     isAiMode,
     setIsAiMode,
     clocks,
-    setClocks
+    setClocks,
+    inCheck
   };
 };

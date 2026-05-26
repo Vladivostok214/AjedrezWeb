@@ -38,8 +38,58 @@ export const RoomPage: React.FC = () => {
   const [tempColor, setTempColor] = useState<'white' | 'black'>('white');
   const [drawnColor, setDrawnColor] = useState<'white' | 'black' | null>(null);
 
+  // Estado para la notificación flotante sobre el tablero
+  const [notification, setNotification] = useState<{ text: string; type: 'check' | 'mate' | 'draw' | 'resign' | 'info' } | null>(null);
+
   // Referencia al color asignado más reciente para usar en el sorteo tras un reset
   const latestColorRef = useRef<'white' | 'black'>('white');
+
+  // Ref mutable para evitar que el useEffect de sockets capture cierres obsoletos (stale closures)
+  const stateRef = useRef({ playerColor, chess, isAiMode, opponentPresent });
+
+  useEffect(() => {
+    stateRef.current = { playerColor, chess, isAiMode, opponentPresent };
+  });
+
+  const showNotification = (text: string, type: 'check' | 'mate' | 'draw' | 'resign' | 'info') => {
+    setNotification({ text, type });
+  };
+
+  // Limpiar la notificación flotante automáticamente después de 2 segundos
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  // Efecto reactivo para mostrar notificaciones flotantes de estado de juego (Jaque, Mate, Abandono, etc.)
+  const lastFenRef = useRef<string>('');
+  
+  useEffect(() => {
+    if (chess.fen === lastFenRef.current) return;
+    lastFenRef.current = chess.fen;
+
+    // Evitar notificaciones al inicio de la partida
+    if (chess.history.length === 0) return;
+
+    if (chess.isGameOver) {
+      const reason = chess.gameOverReason || '';
+      if (reason.toLowerCase().includes('mate')) {
+        showNotification('🏆 ¡Jaque Mate!', 'mate');
+      } else if (reason.toLowerCase().includes('abandono') || reason.toLowerCase().includes('resign')) {
+        showNotification('🏳️ El rival se ha rendido', 'resign');
+      } else if (reason.toLowerCase().includes('tiempo') || reason.toLowerCase().includes('out')) {
+        showNotification('⏰ Tiempo agotado', 'info');
+      } else {
+        showNotification('🏁 Fin de la partida', 'info');
+      }
+    } else if (chess.inCheck) {
+      showNotification('💥 ¡Jaque!', 'check');
+    }
+  }, [chess.fen, chess.isGameOver, chess.gameOverReason, chess.inCheck, chess.history.length]);
 
   // Control de redimensionamiento
   useEffect(() => {
@@ -143,16 +193,17 @@ export const RoomPage: React.FC = () => {
     // Estado inicial de la sala al unirse (incluyendo color y presencia)
     const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black', opponentPresent?: boolean, waiting?: boolean }) => {
       console.log('Asignado color de jugador:', payload.color);
+      const { chess: curChess } = stateRef.current;
       latestColorRef.current = payload.color;
       setPlayerColor(payload.color);
-      chess.setBoardOrientation(payload.color);
+      curChess.setBoardOrientation(payload.color);
       
       if (payload.waiting) {
         setOpponentPresent(false);
       } else if (payload.opponentPresent) {
         setOpponentPresent(true);
         // Si el oponente se conecta y el juego no ha empezado, barajar colores
-        if (chess.history.length === 0) {
+        if (curChess.history.length === 0) {
           triggerColorDraw(payload.color);
         }
       }
@@ -181,13 +232,15 @@ export const RoomPage: React.FC = () => {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
 
-      chess.forceResign(playerColor);
+      const { playerColor: curColor, chess: curChess } = stateRef.current;
+      curChess.forceResign(curColor);
     });
 
     // Recibir movimiento de ajedrez del rival
     const unsubChessMove = registerHandler('chess-move', (payload: { from: string, to: string, promotion?: string, timeLeft?: number }) => {
       console.log('Movimiento recibido del rival:', payload);
-      chess.opponentMove(payload, payload.timeLeft);
+      const { chess: curChess } = stateRef.current;
+      curChess.opponentMove(payload, payload.timeLeft);
     });
 
     // Recibir mensaje de chat del oponente
@@ -198,14 +251,19 @@ export const RoomPage: React.FC = () => {
         text: payload.text,
         time
       }]);
+
+      if (payload.text.includes('tablas')) {
+        showNotification('🚩 El rival ofrece tablas', 'draw');
+      }
     });
 
     // Recibir reinicio de partida por mutuo acuerdo
     const unsubReset = registerHandler('reset-game', () => {
       console.log('Partida reiniciada por el servidor.');
+      const { chess: curChess } = stateRef.current;
       setWaitingForRematchApproval(false);
       setHasRematchRequest(false);
-      chess.resetGame();
+      curChess.resetGame();
       setChatMessages(prev => [...prev, {
         sender: 'sistema',
         text: 'La partida ha sido reiniciada. Se han sorteado nuevos colores.',
@@ -216,7 +274,7 @@ export const RoomPage: React.FC = () => {
     });
 
     // Recibir solicitud de revancha
-    const unsubRematchRequest = registerHandler('rematch-request', () => {
+    const unsubRematchReq = registerHandler('rematch-request', () => {
       console.log('El oponente ha solicitado una revancha.');
       setHasRematchRequest(true);
     });
@@ -239,10 +297,10 @@ export const RoomPage: React.FC = () => {
       unsubChessMove();
       unsubChatMsg();
       unsubReset();
-      unsubRematchRequest();
+      unsubRematchReq();
       unsubRematchDecline();
     };
-  }, [isAiMode, registerHandler, playerColor, chess]);
+  }, [isAiMode, registerHandler]);
 
   // Manejar el movimiento local de piezas y enviarlo por la red
   const handlePieceDrop = (sourceSquare: string, targetSquare: string, piece: string) => {
@@ -461,12 +519,31 @@ export const RoomPage: React.FC = () => {
         <div className={`${isMobileView ? 'w-full' : 'lg:col-span-6'} flex flex-col items-center justify-center p-3 glass-panel rounded-2xl`}>
           {isMobileView && renderMobileOpponentBar()}
           
-          <div className="w-full max-w-[460px]">
+          <div className="w-full max-w-[460px] relative">
             <BoardWrapper 
               fen={chess.fen}
               orientation={chess.boardOrientation}
               onPieceDrop={handlePieceDrop}
             />
+
+            {/* Notificación Flotante sobre el Tablero */}
+            {notification && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none animate-fade-in">
+                <div className={`px-6 py-3 rounded-2xl border text-sm font-bold shadow-2xl animate-scale-up backdrop-blur-md ${
+                  notification.type === 'check' 
+                    ? 'border-red-500/40 text-red-400 bg-red-950/90 shadow-red-500/30' 
+                    : notification.type === 'mate'
+                    ? 'border-yellow-500/40 text-yellow-400 bg-yellow-950/90 shadow-yellow-500/30'
+                    : notification.type === 'resign'
+                    ? 'border-orange-500/40 text-orange-400 bg-orange-950/90 shadow-orange-500/30'
+                    : notification.type === 'draw'
+                    ? 'border-accent-cyan/40 text-accent-cyan bg-cyan-950/90 shadow-accent-cyan/30'
+                    : 'border-accent-violet/40 text-accent-violet bg-neutral-900/95 shadow-accent-violet/30'
+                }`}>
+                  {notification.text}
+                </div>
+              </div>
+            )}
           </div>
 
           {isMobileView && renderMobilePlayerBar()}

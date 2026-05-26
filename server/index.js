@@ -164,11 +164,8 @@ wss.on('connection', (ws) => {
         }
 
         // Reenvío directo (Broker) de jugadas y chat al oponente en la misma sala
-        case 'chess-move':
-        case 'chat-message':
-        case 'peer-left':
-        case 'rematch-request':
-        case 'rematch-decline': {
+        default: {
+          // Reenvío directo (Broker) de cualquier otro mensaje al oponente en la misma sala
           const { roomId } = ws;
           if (!roomId) return;
 
@@ -182,9 +179,6 @@ wss.on('connection', (ws) => {
           }
           break;
         }
-
-        default:
-          console.warn('Tipo de mensaje desconocido recibido:', type);
       }
     } catch (err) {
       console.error('Error procesando mensaje WebSocket:', err);
