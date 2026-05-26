@@ -109,6 +109,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [roomId]);
 
+  // Heartbeat para mantener activa la conexión en plataformas PaaS (como Render/Railway)
+  useEffect(() => {
+    if (!connected) return;
+    const interval = setInterval(() => {
+      sendMessage('ping', {});
+    }, 20000); // Ping cada 20 segundos
+    return () => clearInterval(interval);
+  }, [connected]);
+
   return (
     <SocketContext.Provider value={{ socket, connected, sendMessage, registerHandler }}>
       {children}

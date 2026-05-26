@@ -74,11 +74,17 @@ wss.on('connection', (ws) => {
           break;
         }
 
-        // Reenvío directo (Broker) de jugadas y flujos de WebRTC al rival en la misma sala
-        case 'webrtc-offer':
-        case 'webrtc-answer':
-        case 'ice-candidate':
+        // Responder al Heartbeat del cliente para mantener la conexión viva
+        case 'ping': {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'pong' }));
+          }
+          break;
+        }
+
+        // Reenvío directo (Broker) de jugadas, chat y salida al rival en la misma sala
         case 'chess-move':
+        case 'chat-message':
         case 'peer-left': {
           const { roomId } = ws;
           if (!roomId) return;

@@ -9,7 +9,6 @@ export interface ChessMove {
 }
 
 export const useChessGame = () => {
-  // Mantener la instancia de chess.js en una referencia persistente
   const chessRef = useRef(new Chess());
   
   const [fen, setFen] = useState<string>(chessRef.current.fen());
@@ -19,6 +18,10 @@ export const useChessGame = () => {
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
   const [gameOverReason, setGameOverReason] = useState<string | null>(null);
   const [isAiMode, setIsAiMode] = useState<boolean>(false);
+  
+  // Relojes de ajedrez (10 minutos por defecto = 600 segundos)
+  const [clocks, setClocks] = useState({ w: 600, b: 600 });
+
   const [capturedPieces, setCapturedPieces] = useState({
     w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
     b: { p: 0, n: 0, b: 0, r: 0, q: 0 }
@@ -111,7 +114,7 @@ export const useChessGame = () => {
     }
   }, [updateGameState]);
 
-  const opponentMove = useCallback((move: ChessMove) => {
+  const opponentMove = useCallback((move: ChessMove, opponentTimeLeft?: number) => {
     try {
       chessRef.current.move({
         from: move.from,
@@ -119,10 +122,19 @@ export const useChessGame = () => {
         promotion: move.promotion || undefined
       });
       updateGameState();
+
+      // Sincronizar el reloj del oponente al recibir su jugada
+      if (opponentTimeLeft !== undefined) {
+        const opponentColorKey = boardOrientation === 'white' ? 'b' : 'w';
+        setClocks(prev => ({
+          ...prev,
+          [opponentColorKey]: opponentTimeLeft
+        }));
+      }
     } catch (e) {
       console.error("Error aplicando el movimiento del oponente:", e);
     }
-  }, [updateGameState]);
+  }, [boardOrientation, updateGameState]);
 
   const forceResign = useCallback((winnerColor: 'white' | 'black') => {
     setIsGameOver(true);
@@ -131,6 +143,7 @@ export const useChessGame = () => {
 
   const resetGame = useCallback(() => {
     chessRef.current.reset();
+    setClocks({ w: 600, b: 600 });
     updateGameState();
   }, [updateGameState]);
 
@@ -142,11 +155,6 @@ export const useChessGame = () => {
     const moves = game.moves({ verbose: true });
     if (moves.length === 0) return;
 
-    // Selección inteligente:
-    // 1. Buscar jugadas de Jaque Mate inmediato
-    // 2. Buscar capturas (priorizando damas, torres, etc.)
-    // 3. Buscar jugadas que pongan en Jaque al rey rival
-    // 4. Mover aleatoriamente como fallback
     let selectedMove = moves[Math.floor(Math.random() * moves.length)];
 
     const checkmateMoves = moves.filter((m) => m.san.includes('#'));
@@ -183,17 +191,44 @@ export const useChessGame = () => {
   useEffect(() => {
     if (!isAiMode || isGameOver) return;
 
-    // La CPU juega Negras si el jugador es Blancas, y juega Blancas si el jugador es Negras
     const isAiTurn = (boardOrientation === 'white' && turn === 'b') || 
                       (boardOrientation === 'black' && turn === 'w');
 
     if (isAiTurn) {
       const timer = setTimeout(() => {
         makeAiMove();
-      }, 700); // Retraso de 700ms para simular tiempo de reflexión
+      }, 700);
       return () => clearTimeout(timer);
     }
   }, [isAiMode, turn, boardOrientation, isGameOver, makeAiMove]);
+
+  // Efecto para descontar el tiempo de los relojes en tiempo real
+  useEffect(() => {
+    // El reloj solo corre si ya se inició la partida (history no vacío) y no se ha acabado el juego
+    if (history.length === 0 || isGameOver) return;
+
+    const timerInterval = setInterval(() => {
+      setClocks((prev) => {
+        const currentRemaining = prev[turn];
+        if (currentRemaining <= 1) {
+          // Si el tiempo llegó a 0, se declara fin del juego
+          clearInterval(timerInterval);
+          setIsGameOver(true);
+          setGameOverReason(turn === 'w' ? 'Tiempo agotado (Ganan Negras)' : 'Tiempo agotado (Ganan Blancas)');
+          return {
+            ...prev,
+            [turn]: 0
+          };
+        }
+        return {
+          ...prev,
+          [turn]: currentRemaining - 1
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [turn, history.length, isGameOver]);
 
   return {
     fen,
@@ -209,6 +244,8 @@ export const useChessGame = () => {
     resetGame,
     capturedPieces,
     isAiMode,
-    setIsAiMode
+    setIsAiMode,
+    clocks,
+    setClocks
   };
 };

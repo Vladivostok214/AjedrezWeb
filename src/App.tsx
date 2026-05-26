@@ -1,5 +1,4 @@
 import { SocketProvider } from './context/SocketContext';
-import { WebRTCProvider } from './context/WebRTCContext';
 import { LandingPage } from './pages/LandingPage';
 import { RoomPage } from './pages/RoomPage';
 
@@ -10,11 +9,9 @@ function App() {
 
   return (
     <SocketProvider>
-      <WebRTCProvider>
-        <main className="flex-1 w-full h-full flex flex-col justify-center items-center">
-          {isRoom ? <RoomPage /> : <LandingPage />}
-        </main>
-      </WebRTCProvider>
+      <main className="flex-1 w-full h-full flex flex-col justify-center items-center">
+        {isRoom ? <RoomPage /> : <LandingPage />}
+      </main>
     </SocketProvider>
   );
 }

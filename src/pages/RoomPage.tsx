@@ -2,132 +2,117 @@ import React, { useEffect, useState } from 'react';
 import { BoardWrapper } from '../components/Game/BoardWrapper';
 import { GameStatus } from '../components/Game/GameStatus';
 import { GameControls } from '../components/Game/GameControls';
-import { VideoGrid } from '../components/Video/VideoGrid';
+import { ChatPanel, type ChatMessage } from '../components/Game/ChatPanel';
 import { useChessGame } from '../hooks/useChessGame';
-import { useMediaDevices } from '../hooks/useMediaDevices';
 import { useSocket } from '../context/SocketContext';
-import { useWebRTC } from '../context/WebRTCContext';
 
 export const RoomPage: React.FC = () => {
   const roomId = window.location.pathname.split('/').pop() || '';
   const isAiMode = roomId === 'offline-ai';
   
-  // Hooks de lógica local
+  // Hook de ajedrez local
   const chess = useChessGame();
-  const media = useMediaDevices();
   
-  // Contextos de transporte y multimedia (Solo para modo online)
+  // Socket de transporte
   const { registerHandler, sendMessage, connected: socketConnected } = useSocket();
-  const { 
-    remoteStream, 
-    connectionState: webrtcConnectionState,
-    initiateCall, 
-    handleIncomingOffer, 
-    handleIncomingAnswer, 
-    handleIncomingIce, 
-    setOnSignalGenerated 
-  } = useWebRTC();
 
   const [playerColor, setPlayerColor] = useState<'white' | 'black'>('white');
   const [opponentPresent, setOpponentPresent] = useState<boolean>(false);
   const [copyFeedback, setCopyFeedback] = useState<boolean>(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
-  // 1. Vincular señales de WebRTC con el WebSocket de señalización (Solo Online)
-  useEffect(() => {
-    if (isAiMode) return;
-    setOnSignalGenerated((type, payload) => {
-      sendMessage(type, payload);
-    });
-  }, [isAiMode, setOnSignalGenerated, sendMessage]);
-
-  // 2. Solicitar permisos de cámara/micrófono al montar la sala (Solo Online) u activar modo IA
+  // Configurar modo de IA si la sala es offline-ai
   useEffect(() => {
     if (isAiMode) {
       chess.setIsAiMode(true);
-    } else {
-      media.getMediaStream();
+      // Inicializar chat con mensaje de sistema para modo offline
+      setChatMessages([
+        {
+          sender: 'sistema',
+          text: 'Modo Offline: Estás jugando contra el Procesador CPU. El chat y la red están inactivos.',
+          time: ''
+        }
+      ]);
     }
   }, [isAiMode]);
 
-  // 3. Registrar escuchas de eventos WebSocket (Solo Online)
+  // Escuchar eventos de la red mediante WebSockets (Solo modo online)
   useEffect(() => {
     if (isAiMode) return;
 
-    // Al unirse exitosamente a la sala
+    // Estado inicial de la sala al unirse
     const unsubStatus = registerHandler('room-status', (payload: { color: 'white' | 'black' }) => {
       console.log('Asignado color de jugador:', payload.color);
       setPlayerColor(payload.color);
       chess.setBoardOrientation(payload.color);
     });
 
-    // Cuando el oponente entra a la sala
+    // Oponente se unió a la sala
     const unsubJoined = registerHandler('peer-joined', () => {
-      console.log('El oponente se ha unido. Iniciando llamada WebRTC...');
+      console.log('Oponente conectado.');
       setOpponentPresent(true);
-      if (playerColor === 'white') {
-        initiateCall();
+      setChatMessages(prev => [...prev, {
+        sender: 'sistema',
+        text: 'El rival se ha conectado. La partida está lista.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    });
+
+    // Oponente abandonó la sala o se desconectó
+    const unsubLeft = registerHandler('peer-left', (payload?: { reason?: string }) => {
+      console.log('Oponente desconectado.');
+      setOpponentPresent(false);
+      
+      const isResign = payload?.reason === 'resign';
+      setChatMessages(prev => [...prev, {
+        sender: 'sistema',
+        text: isResign ? 'El oponente se ha rendido.' : 'El oponente se desconectó de la sala.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+
+      if (isResign) {
+        chess.forceResign(playerColor);
+      } else {
+        // En caso de caída de conexión, forzar abandono a favor del jugador remanente
+        chess.forceResign(playerColor);
       }
     });
 
-    // Cuando el oponente sale de la sala
-    const unsubLeft = registerHandler('peer-left', () => {
-      console.log('El oponente abandonó la sala.');
-      setOpponentPresent(false);
-      chess.forceResign(playerColor);
-    });
-
-    // Oferta WebRTC entrante
-    const unsubOffer = registerHandler('webrtc-offer', (payload: { sdp: RTCSessionDescriptionInit }) => {
-      console.log('Recibida oferta WebRTC del oponente...');
-      setOpponentPresent(true);
-      handleIncomingOffer(payload.sdp);
-    });
-
-    // Respuesta WebRTC entrante
-    const unsubAnswer = registerHandler('webrtc-answer', (payload: { sdp: RTCSessionDescriptionInit }) => {
-      console.log('Recibido respuesta WebRTC del oponente...');
-      handleIncomingAnswer(payload.sdp);
-    });
-
-    // ICE Candidatos
-    const unsubIce = registerHandler('ice-candidate', (payload: { candidate: RTCIceCandidateInit }) => {
-      handleIncomingIce(payload.candidate);
-    });
-
-    // Movimientos del rival
-    const unsubChessMove = registerHandler('chess-move', (payload: { from: string, to: string, promotion?: string }) => {
+    // Recibir movimiento de ajedrez del rival (incluye su tiempo de reloj restante)
+    const unsubChessMove = registerHandler('chess-move', (payload: { from: string, to: string, promotion?: string, timeLeft?: number }) => {
       console.log('Movimiento recibido del rival:', payload);
-      chess.opponentMove(payload);
+      chess.opponentMove(payload, payload.timeLeft);
+    });
+
+    // Recibir mensaje de chat del oponente
+    const unsubChatMsg = registerHandler('chat-message', (payload: { text: string }) => {
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setChatMessages(prev => [...prev, {
+        sender: 'rival',
+        text: payload.text,
+        time
+      }]);
     });
 
     return () => {
       unsubStatus();
       unsubJoined();
       unsubLeft();
-      unsubOffer();
-      unsubAnswer();
-      unsubIce();
       unsubChessMove();
+      unsubChatMsg();
     };
-  }, [
-    isAiMode,
-    registerHandler, 
-    playerColor, 
-    initiateCall, 
-    handleIncomingOffer, 
-    handleIncomingAnswer, 
-    handleIncomingIce, 
-    chess
-  ]);
+  }, [isAiMode, registerHandler, playerColor, chess]);
 
-  // Manejar el soltado de piezas validando el turno local
+  // Manejar el movimiento local de piezas y enviarlo por la red
   const handlePieceDrop = (sourceSquare: string, targetSquare: string, piece: string) => {
-    // Validar si es el turno del jugador y coincide con su color asignado
+    // Evitar movimientos si la partida terminó o si no es el turno correspondiente
+    if (chess.isGameOver) return false;
+
     const isMyTurn = (chess.turn === 'w' && playerColor === 'white') || 
                       (chess.turn === 'b' && playerColor === 'black');
     
     if (!isMyTurn) {
-      console.warn('Intento de movimiento fuera de turno.');
+      console.warn('Mover en el turno del rival no está permitido.');
       return false;
     }
 
@@ -137,14 +122,32 @@ export const RoomPage: React.FC = () => {
       const isPromotionSquare = targetSquare.endsWith('8') || targetSquare.endsWith('1');
       const promotion = (isPawn && isPromotionSquare) ? 'q' : undefined;
 
-      // Enviar jugada al rival (Solo Online)
+      // Obtener nuestro tiempo restante del reloj local para sincronizar
+      const myColorKey = playerColor === 'white' ? 'w' : 'b';
+      const timeLeft = chess.clocks[myColorKey];
+
+      // Enviar jugada y tiempo a través del WebSocket
       sendMessage('chess-move', {
         from: sourceSquare,
         to: targetSquare,
-        promotion
+        promotion,
+        timeLeft
       });
     }
     return success;
+  };
+
+  // Enviar mensaje de chat local
+  const handleSendChatMessage = (text: string) => {
+    if (isAiMode) return;
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setChatMessages(prev => [...prev, {
+      sender: 'tú',
+      text,
+      time
+    }]);
+
+    sendMessage('chat-message', { text });
   };
 
   const handleCopyLink = () => {
@@ -153,23 +156,9 @@ export const RoomPage: React.FC = () => {
     setTimeout(() => setCopyFeedback(false), 2000);
   };
 
-  // Determinar la etiqueta del estado de conexión WebRTC para la UI
-  const getWebRTCStatusLabel = () => {
-    if (isAiMode) return 'Entrenamiento Offline';
-    switch (webrtcConnectionState) {
-      case 'connected': return 'Llamada Conectada (P2P)';
-      case 'connecting': return 'Conectando videollamada...';
-      case 'failed': return 'Videollamada fallida (Solo Ajedrez)';
-      case 'disconnected': return 'Llamada desconectada';
-      default: return opponentPresent ? 'Inicializando llamada...' : 'Esperando rival...';
-    }
-  };
-
-  const isCpuTurn = chess.turn === (playerColor === 'white' ? 'b' : 'w');
-
   return (
     <div className="min-h-screen flex flex-col p-6 max-w-7xl mx-auto w-full">
-      {/* Cabecera */}
+      {/* Cabecera de la Partida */}
       <header className="flex flex-wrap justify-between items-center gap-4 mb-6 pb-4 border-b border-white/5">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
@@ -180,18 +169,18 @@ export const RoomPage: React.FC = () => {
               {isAiMode ? 'MODO ENTRENAMIENTO' : `SALA: ${roomId}`}
             </span>
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            {!isAiMode && (
-              <>
-                <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                <span className="text-[10px] text-gray-400">
-                  {socketConnected ? 'Servidor Conectado' : 'Reconectando al Servidor...'}
-                </span>
-                <span className="text-gray-600 text-[10px]">•</span>
-              </>
-            )}
-            <span className="text-[10px] text-gray-400">{getWebRTCStatusLabel()}</span>
-          </div>
+          {!isAiMode && (
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-[10px] text-gray-400">
+                {socketConnected ? 'Servidor Conectado' : 'Reconectando al Servidor...'}
+              </span>
+              <span className="text-gray-600 text-[10px]">•</span>
+              <span className="text-[10px] text-gray-400">
+                {opponentPresent ? 'Rival en línea' : 'Esperando rival...'}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -219,7 +208,7 @@ export const RoomPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Grid: Chess y Sidebar (Video / Controles) */}
+      {/* Grid Principal */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         
         {/* Columna Izquierda: Tablero de Ajedrez */}
@@ -231,93 +220,49 @@ export const RoomPage: React.FC = () => {
           />
         </div>
 
-        {/* Columna Derecha: Sidebar con Video y Estado del Juego */}
-        <div className="flex flex-col gap-6">
-          {/* Panel Lateral: Grid de Videos (Online) o Panel de Computadora (Offline) */}
-          <div className="flex-1 min-h-[360px] glass-panel p-4 rounded-2xl flex flex-col justify-center">
-            {isAiMode ? (
-              <div className="flex-grow flex flex-col justify-between py-4 text-center">
-                <div className="flex flex-col items-center justify-center flex-grow">
-                  <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-6 border transition-all duration-500 ${
-                    isCpuTurn
-                      ? 'bg-accent-cyan/15 border-accent-cyan shadow-[0_0_25px_rgba(6,182,212,0.4)] animate-pulse'
-                      : 'bg-neutral-800/80 border-white/5 text-gray-500'
-                  }`}>
-                    <span className="text-4xl select-none">🤖</span>
-                  </div>
-                  
-                  <h2 className="text-base font-bold text-white mb-1 uppercase font-display tracking-wider">
-                    Motor CPU Heurístico
-                  </h2>
-                  
-                  <p className="text-xs text-gray-400 max-w-[220px] mb-6 leading-relaxed">
-                    Analiza el tablero localmente, dando prioridad a jaques mates, capturas tácticas y jaques directos.
-                  </p>
+        {/* Columna Derecha: Clocks, Movimientos, Chat y Botones */}
+        <div className="flex flex-col gap-4">
+          
+          {/* Relojes y Notación SAN */}
+          <GameStatus 
+            turn={chess.turn}
+            isGameOver={chess.isGameOver}
+            gameOverReason={chess.gameOverReason}
+            clocks={chess.clocks}
+            playerColor={playerColor}
+            history={chess.history}
+            capturedPieces={chess.capturedPieces}
+            isAiMode={isAiMode}
+          />
 
-                  <span className={`text-[10px] px-3.5 py-1 rounded-full font-bold border uppercase tracking-wider ${
-                    isCpuTurn
-                      ? 'bg-accent-cyan/20 border-accent-cyan/30 text-accent-cyan animate-pulse'
-                      : 'bg-neutral-800/60 border-white/5 text-gray-500'
-                  }`}>
-                    {isCpuTurn ? 'Computadora Pensando...' : 'Esperando tu Jugada...'}
-                  </span>
-                </div>
-
-                <div className="border-t border-white/5 pt-4">
-                  <button 
-                    onClick={() => {
-                      const nextColor = playerColor === 'white' ? 'black' : 'white';
-                      setPlayerColor(nextColor);
-                      chess.setBoardOrientation(nextColor);
-                    }}
-                    className="text-xs w-full py-2.5 bg-neutral-900/60 hover:bg-neutral-800 text-gray-300 rounded-lg border border-white/5 transition-all font-medium active:scale-98"
-                  >
-                    🔄 Cambiar a {playerColor === 'white' ? 'Negras (CPU Inicia)' : 'Blancas'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <VideoGrid 
-                localStream={media.stream}
-                remoteStream={remoteStream}
-                isLocalAudioMuted={media.isAudioMuted}
-                isLocalVideoMuted={media.isVideoMuted}
-                onToggleAudio={media.toggleAudio}
-                onToggleVideo={media.toggleVideo}
-              />
-            )}
-          </div>
-
-          {/* Información del juego y botones */}
-          <div className="flex flex-col gap-4">
-            <GameStatus 
-              turn={chess.turn}
-              isGameOver={chess.isGameOver}
-              gameOverReason={chess.gameOverReason}
-              capturedPieces={chess.capturedPieces}
-            />
-            
-            <GameControls 
-              onResign={() => {
-                if (isAiMode) {
-                  chess.forceResign(playerColor === 'white' ? 'black' : 'white');
-                } else {
-                  const winnerColor = playerColor === 'white' ? 'black' : 'white';
-                  chess.forceResign(winnerColor);
-                  sendMessage('peer-left', { reason: 'resign' });
-                }
-              }}
-              onOfferDraw={() => {
-                if (isAiMode) {
-                  alert('La computadora ha declinado tu oferta de tablas. ¡Sigue jugando!');
-                } else {
-                  alert('Solicitud de tablas enviada (Simulado)');
-                }
-              }}
-              onReset={chess.resetGame}
-              canReset={chess.isGameOver}
-            />
-          </div>
+          {/* Panel del Chat */}
+          <ChatPanel 
+            messages={chatMessages}
+            onSendMessage={handleSendChatMessage}
+            disabled={isAiMode}
+          />
+          
+          {/* Acciones e Interrupciones del juego */}
+          <GameControls 
+            onResign={() => {
+              const winnerColor = playerColor === 'white' ? 'black' : 'white';
+              chess.forceResign(winnerColor);
+              if (!isAiMode) {
+                sendMessage('peer-left', { reason: 'resign' });
+              }
+            }}
+            onOfferDraw={() => {
+              if (isAiMode) {
+                alert('La computadora ha declinado la oferta de tablas.');
+              } else {
+                sendMessage('chat-message', { text: '🚩 Ofrezco tablas en la partida.' });
+                alert('Solicitud de tablas enviada por el chat.');
+              }
+            }}
+            onReset={chess.resetGame}
+            canReset={chess.isGameOver}
+          />
+          
         </div>
 
       </div>
