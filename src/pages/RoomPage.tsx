@@ -874,6 +874,3 @@ export const RoomPage: React.FC = () => {
     </div>
   );
 };
- </div>
-  );
-};
