@@ -471,11 +471,12 @@ export const RoomPage: React.FC = () => {
   };
 
   // Rechazar la revancha
-  const handleDeclineRematch = () => {
-    setHasRematchRequest(false);
-    sendMessage('rematch-decline', {});
-  };
-
+    const handleDeclineRematch = () => {
+      setHasRematchRequest(false);
+      sendMessage('rematch-decline', {});
+      // Redirigir al inicio para "cerrar" la sala localmente
+      window.location.href = '/';
+    };
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopyFeedback(true);
