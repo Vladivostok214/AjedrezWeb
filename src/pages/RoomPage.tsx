@@ -864,18 +864,3 @@ export const RoomPage: React.FC = () => {
     </div>
   );
 };
-t-semibold mt-2 animate-pulse">
-                        El rival inicia la partida ⚫
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-};
