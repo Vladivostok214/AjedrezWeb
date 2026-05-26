@@ -1,3 +1,4 @@
+// SOTA Chess client v1.2.0 - Updated May 26 2026
 import React, { useEffect, useState, useRef } from 'react';
 import { BoardWrapper } from '../components/Game/BoardWrapper';
 import { GameStatus } from '../components/Game/GameStatus';
