@@ -22,6 +22,9 @@ export const RoomPage: React.FC = () => {
   const [copyFeedback, setCopyFeedback] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
+  // Detección de entorno móvil
+  const [isMobileView, setIsMobileView] = useState<boolean>(window.innerWidth < 1024);
+
   // Drawers responsivos
   const [leftDrawerOpen, setLeftDrawerOpen] = useState<boolean>(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState<boolean>(false);
@@ -38,10 +41,66 @@ export const RoomPage: React.FC = () => {
   // Referencia al color asignado más reciente para usar en el sorteo tras un reset
   const latestColorRef = useRef<'white' | 'black'>('white');
 
+  // Control de redimensionamiento
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileView(window.innerWidth < 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Desplazamiento al inicio (Scroll to Top) al cargar la sala
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
+
+  // Control de gestos táctiles (Swipe)
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
+    
+    const touch = e.changedTouches[0];
+    const startX = touchStartXRef.current;
+    const diffX = touch.clientX - startX;
+    const diffY = touch.clientY - touchStartYRef.current;
+    
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+
+    // Reconocer solo deslizamientos horizontales notables
+    if (Math.abs(diffX) > Math.abs(diffY) * 1.8) {
+      const minSwipeDistance = 50;
+      
+      if (Math.abs(diffX) > minSwipeDistance) {
+        if (diffX > 0) {
+          // Deslizar a la derecha
+          if (rightDrawerOpen) {
+            setRightDrawerOpen(false);
+          } else if (!leftDrawerOpen && startX < 60) {
+            // Abrir historial desde borde izquierdo
+            setLeftDrawerOpen(true);
+          }
+        } else {
+          // Deslizar a la izquierda
+          if (leftDrawerOpen) {
+            setLeftDrawerOpen(false);
+          } else if (!rightDrawerOpen && startX > window.innerWidth - 60) {
+            // Abrir chat desde borde derecho
+            setRightDrawerOpen(true);
+          }
+        }
+      }
+    }
+  };
 
   // Configurar modo de IA si la sala es offline-ai
   useEffect(() => {
@@ -278,7 +337,7 @@ export const RoomPage: React.FC = () => {
         isOpponentActive 
           ? 'border-accent-cyan/40 shadow-[0_0_15px_rgba(6,182,212,0.15)] bg-accent-cyan/5' 
           : 'border-white/5 bg-black/20'
-      } lg:hidden mb-3 w-full max-w-[500px]`}>
+      } lg:hidden mb-2.5 w-full max-w-[480px]`}>
         <div className="flex flex-col">
           <span className="text-xs text-gray-300 font-bold uppercase tracking-wider">
             {isAiMode ? 'CPU (Negras)' : 'Rival'}
@@ -305,7 +364,7 @@ export const RoomPage: React.FC = () => {
         isPlayerActive 
           ? 'border-accent-violet/40 shadow-[0_0_15px_rgba(139,92,246,0.15)] bg-accent-violet/5' 
           : 'border-white/5 bg-black/20'
-      } lg:hidden mt-3 w-full max-w-[500px]`}>
+      } lg:hidden mt-2.5 w-full max-w-[480px]`}>
         <div className="flex flex-col">
           <span className="text-xs text-gray-300 font-bold uppercase tracking-wider">
             Tú ({playerColor === 'white' ? 'Blancas' : 'Negras'})
@@ -324,79 +383,85 @@ export const RoomPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col p-6 max-w-7xl mx-auto w-full">
+    <div 
+      className="min-h-screen flex flex-col p-4 md:p-5 max-w-7xl mx-auto w-full overflow-hidden select-none"
+      onTouchStart={isMobileView ? handleTouchStart : undefined}
+      onTouchEnd={isMobileView ? handleTouchEnd : undefined}
+    >
       {/* Cabecera de la Partida */}
-      <header className="flex flex-wrap justify-between items-center gap-4 mb-6 pb-4 border-b border-white/5">
-        <div className="flex flex-col gap-1">
+      <header className="flex flex-wrap justify-between items-center gap-3 mb-4 pb-2 border-b border-white/5">
+        <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-3">
-            <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-accent-violet to-accent-cyan bg-clip-text text-transparent uppercase font-display">
+            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-accent-violet to-accent-cyan bg-clip-text text-transparent uppercase font-display">
               Ajedrez 1v1
             </span>
-            <span className="text-[10px] text-gray-500 font-mono select-all bg-black/40 px-3 py-1 rounded-full border border-white/5">
-              {isAiMode ? 'MODO ENTRENAMIENTO' : `SALA: ${roomId}`}
+            <span className="text-[9px] text-gray-500 font-mono select-all bg-black/40 px-2 py-0.5 rounded-full border border-white/5">
+              {isAiMode ? 'OFFLINE' : `SALA: ${roomId}`}
             </span>
           </div>
           {!isAiMode && (
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-[10px] text-gray-400">
-                {socketConnected ? 'Servidor Conectado' : 'Reconectando al Servidor...'}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-[9px] text-gray-400">
+                {socketConnected ? 'Conectado' : 'Reconectando...'}
               </span>
-              <span className="text-gray-600 text-[10px]">•</span>
-              <span className="text-[10px] text-gray-400">
-                {opponentPresent ? 'Rival en línea' : 'Esperando rival...'}
+              <span className="text-gray-600 text-[9px]">•</span>
+              <span className="text-[9px] text-gray-400">
+                {opponentPresent ? 'Rival online' : 'Esperando rival...'}
               </span>
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400 bg-neutral-900/60 px-3 py-1.5 rounded-lg border border-white/5">
-            Juegas con: <strong className="text-white uppercase">{playerColor === 'white' ? 'Blancas' : 'Negras'}</strong>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] text-gray-400 bg-neutral-900/60 px-2.5 py-1 rounded-lg border border-white/5">
+            Juegas: <strong className="text-white uppercase">{playerColor === 'white' ? 'Blancas' : 'Negras'}</strong>
           </span>
           <button 
             onClick={() => window.location.href = '/'}
-            className="text-xs font-semibold px-4 py-2 rounded-lg transition-all duration-200 border bg-neutral-900/60 hover:bg-neutral-800 border-white/5 text-gray-300 hover:border-white/15 active:scale-95 cursor-pointer"
+            className="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-all duration-200 border bg-neutral-900/60 hover:bg-neutral-800 border-white/5 text-gray-300 hover:border-white/15 active:scale-95 cursor-pointer"
           >
-            🏠 Volver al Inicio
+            🏠 Volver
           </button>
           {!isAiMode && (
             <button 
               onClick={handleCopyLink}
-              className={`text-xs font-semibold px-4 py-2 rounded-lg transition-all duration-200 border ${
+              className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-all duration-200 border ${
                 copyFeedback 
                   ? 'bg-green-600/20 border-green-500/30 text-green-400' 
                   : 'bg-accent-violet/10 hover:bg-accent-violet/20 border-accent-violet/20 text-accent-violet'
               }`}
             >
-              {copyFeedback ? '✓ Copiado!' : '🔗 Copiar Invitación'}
+              {copyFeedback ? '✓ Copiado!' : '🔗 Invitar'}
             </button>
           )}
         </div>
       </header>
 
       {/* Grid Principal (3 Columnas en PC, 1 en Móvil) */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch w-full min-h-[480px]">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch w-full min-h-0">
         
         {/* Columna Izquierda: Relojes, historial, capturas (Solo Desktop) */}
-        <div className="hidden lg:flex lg:col-span-3 flex-col justify-between">
-          <GameStatus 
-            turn={chess.turn}
-            isGameOver={chess.isGameOver}
-            gameOverReason={chess.gameOverReason}
-            clocks={chess.clocks}
-            playerColor={playerColor}
-            history={chess.history}
-            capturedPieces={chess.capturedPieces}
-            isAiMode={isAiMode}
-          />
-        </div>
+        {!isMobileView && (
+          <div className="lg:col-span-3 flex flex-col justify-between">
+            <GameStatus 
+              turn={chess.turn}
+              isGameOver={chess.isGameOver}
+              gameOverReason={chess.gameOverReason}
+              clocks={chess.clocks}
+              playerColor={playerColor}
+              history={chess.history}
+              capturedPieces={chess.capturedPieces}
+              isAiMode={isAiMode}
+            />
+          </div>
+        )}
 
         {/* Columna Central: Tablero de Ajedrez */}
-        <div className="lg:col-span-6 flex flex-col items-center justify-center p-4 glass-panel rounded-2xl">
-          {renderMobileOpponentBar()}
+        <div className={`${isMobileView ? 'w-full' : 'lg:col-span-6'} flex flex-col items-center justify-center p-3 glass-panel rounded-2xl`}>
+          {isMobileView && renderMobileOpponentBar()}
           
-          <div className="w-full max-w-[500px]">
+          <div className="w-full max-w-[460px]">
             <BoardWrapper 
               fen={chess.fen}
               orientation={chess.boardOrientation}
@@ -404,55 +469,61 @@ export const RoomPage: React.FC = () => {
             />
           </div>
 
-          {renderMobilePlayerBar()}
+          {isMobileView && renderMobilePlayerBar()}
 
           {/* Botones móviles para abrir cajones laterales */}
-          <div className="grid grid-cols-2 gap-3 mt-4 lg:hidden w-full max-w-[500px]">
-            <button 
-              onClick={() => setLeftDrawerOpen(true)}
-              className="py-2.5 px-4 rounded-xl bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-gray-300 font-semibold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer text-xs"
-            >
-              📋 Historial
-            </button>
-            <button 
-              onClick={() => setRightDrawerOpen(true)}
-              className="py-2.5 px-4 rounded-xl bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-gray-300 font-semibold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer text-xs"
-            >
-              💬 Chat y Acciones
-            </button>
-          </div>
+          {isMobileView && (
+            <div className="grid grid-cols-2 gap-3 mt-4 w-full max-w-[460px]">
+              <button 
+                onClick={() => setLeftDrawerOpen(true)}
+                className="py-2.5 px-4 rounded-xl bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-gray-300 font-semibold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer text-xs"
+              >
+                📋 Historial
+              </button>
+              <button 
+                onClick={() => setRightDrawerOpen(true)}
+                className="py-2.5 px-4 rounded-xl bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-gray-300 font-semibold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer text-xs"
+              >
+                💬 Chat y Acciones
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Columna Derecha: Chat y Controles (Solo Desktop) */}
-        <div className="hidden lg:flex lg:col-span-3 flex-col gap-4 h-full">
-          <div className="flex-1 min-h-[300px]">
-            <ChatPanel 
-              messages={chatMessages}
-              onSendMessage={handleSendChatMessage}
-              disabled={isAiMode}
-            />
+        {!isMobileView && (
+          <div className="lg:col-span-3 flex flex-col gap-4 h-full justify-between">
+            <div className="flex-1 min-h-[260px]">
+              <ChatPanel 
+                messages={chatMessages}
+                onSendMessage={handleSendChatMessage}
+                disabled={isAiMode}
+              />
+            </div>
+            
+            <div className="mt-2">
+              <GameControls 
+                onResign={() => {
+                  const winnerColor = playerColor === 'white' ? 'black' : 'white';
+                  chess.forceResign(winnerColor);
+                  if (!isAiMode) {
+                    sendMessage('peer-left', { reason: 'resign' });
+                  }
+                }}
+                onOfferDraw={() => {
+                  if (isAiMode) {
+                    alert('La computadora ha declinado la oferta de tablas.');
+                  } else {
+                    sendMessage('chat-message', { text: '🚩 Ofrezco tablas en la partida.' });
+                    alert('Solicitud de tablas enviada por el chat.');
+                  }
+                }}
+                onReset={handleRequestRematch}
+                canReset={chess.isGameOver}
+              />
+            </div>
           </div>
-          
-          <GameControls 
-            onResign={() => {
-              const winnerColor = playerColor === 'white' ? 'black' : 'white';
-              chess.forceResign(winnerColor);
-              if (!isAiMode) {
-                sendMessage('peer-left', { reason: 'resign' });
-              }
-            }}
-            onOfferDraw={() => {
-              if (isAiMode) {
-                alert('La computadora ha declinado la oferta de tablas.');
-              } else {
-                sendMessage('chat-message', { text: '🚩 Ofrezco tablas en la partida.' });
-                alert('Solicitud de tablas enviada por el chat.');
-              }
-            }}
-            onReset={handleRequestRematch}
-            canReset={chess.isGameOver}
-          />
-        </div>
+        )}
 
       </div>
 
