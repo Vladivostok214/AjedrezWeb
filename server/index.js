@@ -27,17 +27,18 @@ wss.on('connection', (ws) => {
   ws.color = null;
 
   ws.on('message', (data) => {
+    console.log(`[WS] Raw Data: ${data}`);
     try {
       const message = data.toString();
       const { type, payload } = JSON.parse(message);
       
-      console.log(`[WS] Mensaje recibido: ${type}`, payload);
+      console.log(`[WS] Tipo: ${type} | Sala: ${ws.roomId || payload?.roomId || 'N/A'}`);
 
       switch (type) {
         case 'join': {
           const { roomId } = payload;
           if (!roomId) {
-            console.warn('Intento de unión sin roomId provisto.');
+            console.warn('[WS] Intento de unión sin roomId.');
             return;
           }
 
@@ -49,12 +50,12 @@ wss.on('connection', (ws) => {
               gameOver: false
             };
             rooms.set(roomId, room);
-            console.log(`[ROOM] Nueva sala creada: ${roomId}`);
+            console.log(`[ROOM] Creada nueva sala: "${roomId}"`);
           }
 
           // Restringir a un máximo estricto de 2 jugadores (1v1)
           if (room.players.size >= 2) {
-            console.log(`[ROOM] Sala ${roomId} llena. Rechazando nuevo cliente.`);
+            console.log(`[ROOM] Sala "${roomId}" llena. Rechazando.`);
             ws.send(JSON.stringify({ type: 'room-full', payload: { roomId } }));
             ws.close();
             return;
@@ -63,17 +64,17 @@ wss.on('connection', (ws) => {
           ws.roomId = roomId;
           room.players.add(ws);
 
-          console.log(`[ROOM] Jugador se unió a ${roomId}. Total: ${room.players.size}`);
+          console.log(`[ROOM] "${roomId}": Jugador añadido. Total en sala: ${room.players.size}`);
 
           // --- CASO A: Es la primera conexión a la sala ---
           if (room.players.size === 1) {
-            console.log(`[ROOM] ${roomId}: Enviando status CASO A (Esperando rival)`);
+            console.log(`[ROOM] "${roomId}": Enviando Status Caso A (1/2)`);
             ws.send(JSON.stringify({
               type: 'room-status',
               payload: { color: 'white', roomId, opponentPresent: false, waiting: true, playerCount: 1 }
             }));
           } 
-          // --- CASO B: Se une el segundo jugador y los colores no han sido asignados ---
+          // --- CASO B: Se une el segundo jugador ---
           else if (room.players.size === 2 && !room.colorsAssigned) {
             const playersArray = Array.from(room.players);
             
@@ -84,7 +85,7 @@ wss.on('connection', (ws) => {
             playersArray[1].color = guestColor;
             room.colorsAssigned = true;
 
-            console.log(`[ROOM] ${roomId}: Enviando status CASO B (Partida lista). Colores: 0=${hostColor}, 1=${guestColor}`);
+            console.log(`[ROOM] "${roomId}": Enviando Status Caso B (2/2). Sorteo: Host=${hostColor}`);
 
             playersArray[0].send(JSON.stringify({
               type: 'room-status',
@@ -99,7 +100,7 @@ wss.on('connection', (ws) => {
             playersArray[0].send(JSON.stringify({ type: 'peer-joined' }));
             playersArray[1].send(JSON.stringify({ type: 'peer-joined' }));
           } 
-          // --- CASO C: Reconexión (colores ya asignados) ---
+          // --- CASO C: Reconexión ---
           else if (room.players.size === 2 && room.colorsAssigned) {
             const playersArray = Array.from(room.players);
             const otherPlayer = playersArray.find(p => p !== ws);
@@ -107,9 +108,8 @@ wss.on('connection', (ws) => {
             const assignedColor = otherPlayer.color === 'white' ? 'black' : 'white';
             ws.color = assignedColor;
 
-            console.log(`[ROOM] ${roomId}: Enviando status CASO C (Reconexión). Color: ${assignedColor}`);
+            console.log(`[ROOM] "${roomId}": Enviando Status Caso C (Reconexión). Color=${assignedColor}`);
 
-            // Informar al jugador que se reconecta su color y el estado actual
             ws.send(JSON.stringify({
               type: 'room-status',
               payload: { 
@@ -117,12 +117,10 @@ wss.on('connection', (ws) => {
                 roomId, 
                 opponentPresent: true,
                 playerCount: 2,
-                // Si la partida terminó, indicarlo para que el cliente sepa que es una revancha pendiente
                 gameOver: room.gameOver
               }
             }));
 
-            // Notificar al oponente que el rival reconectó
             otherPlayer.send(JSON.stringify({ type: 'peer-joined' }));
           }
           break;

@@ -89,14 +89,19 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       ws.onmessage = (event) => {
         try {
-          const { type, payload } = JSON.parse(event.data);
+          const data = JSON.parse(event.data);
+          console.log(`[SOCKET] << Recibido: ${data.type}`, data.payload || '');
+          
+          const { type, payload } = data;
           // Despachar el mensaje a todos los handlers registrados para ese tipo
           const typeHandlers = handlersRef.current.get(type);
           if (typeHandlers) {
             typeHandlers.forEach((cb) => cb(payload));
+          } else {
+            console.warn(`[SOCKET] No hay handlers registrados para el tipo: ${type}`);
           }
         } catch (err) {
-          console.error('Error parseando mensaje entrante de WebSocket:', err);
+          console.error('Error parseando mensaje entrante de WebSocket:', err, event.data);
         }
       };
 
