@@ -551,6 +551,10 @@ export const RoomPage: React.FC = () => {
               <span className="text-[9px] text-gray-400">
                 {opponentPresent ? 'Rival online' : 'Esperando rival...'}
               </span>
+              <span className="text-gray-600 text-[9px]">•</span>
+              <span className="text-[9px] text-accent-cyan font-bold bg-accent-cyan/10 px-1.5 rounded">
+                {roomPlayerCount}/2 Jugadores
+              </span>
             </div>
           )}
         </div>

@@ -65,7 +65,7 @@ wss.on('connection', (ws) => {
           if (room.players.size === 1) {
             ws.send(JSON.stringify({
               type: 'room-status',
-              payload: { color: 'white', roomId, opponentPresent: false, waiting: true }
+              payload: { color: 'white', roomId, opponentPresent: false, waiting: true, playerCount: 1 }
             }));
           } 
           // --- CASO B: Se une el segundo jugador y los colores no han sido asignados ---
@@ -83,12 +83,12 @@ wss.on('connection', (ws) => {
 
             playersArray[0].send(JSON.stringify({
               type: 'room-status',
-              payload: { color: hostColor, roomId, opponentPresent: true }
+              payload: { color: hostColor, roomId, opponentPresent: true, playerCount: 2 }
             }));
 
             playersArray[1].send(JSON.stringify({
               type: 'room-status',
-              payload: { color: guestColor, roomId, opponentPresent: true }
+              payload: { color: guestColor, roomId, opponentPresent: true, playerCount: 2 }
             }));
 
             playersArray[0].send(JSON.stringify({ type: 'peer-joined' }));
@@ -111,6 +111,7 @@ wss.on('connection', (ws) => {
                 color: assignedColor, 
                 roomId, 
                 opponentPresent: true,
+                playerCount: 2,
                 // Si la partida terminó, indicarlo para que el cliente sepa que es una revancha pendiente
                 gameOver: room.gameOver
               }
