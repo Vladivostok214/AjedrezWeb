@@ -4,7 +4,8 @@
   "description": "Servidor de senalizacion y sincronizacion para Ajedrez 1v1 P2P",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "echo 'No build step required'"
   },
   "dependencies": {
     "ws": "^8.18.0"
