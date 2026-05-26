@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 interface SocketContextType {
   socket: WebSocket | null;
@@ -12,6 +12,7 @@ const SocketContext = createContext<SocketContextType | undefined>(undefined);
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [connected, setConnected] = useState<boolean>(false);
+  // handlersRef almacena todos los handlers registrados — nunca se resetea entre renders
   const handlersRef = useRef<Map<string, Set<(payload: any) => void>>>(new Map());
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -19,15 +20,21 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const path = window.location.pathname;
   const roomId = path.startsWith('/room/') ? path.split('/').pop() : null;
 
-  const sendMessage = (type: string, payload: any) => {
+  // sendMessage es estable gracias a useCallback — no crea nuevas referencias en cada render
+  const sendMessage = useCallback((type: string, payload: any) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type, payload }));
     } else {
       console.warn('No se puede enviar mensaje WebSocket, la conexión no está abierta:', type);
     }
-  };
+  }, []);
 
-  const registerHandler = (type: string, callback: (payload: any) => void) => {
+  // registerHandler es estable gracias a useCallback con deps vacías.
+  // CRÍTICO: Esto garantiza que el useEffect en RoomPage.tsx que depende de registerHandler
+  // se ejecute UNA SOLA VEZ (al montar), evitando la ventana de tiempo donde los handlers
+  // se des-suscriben durante un re-render y mensajes como 'game-resign' o 'rematch-request'
+  // se descartan silenciosamente.
+  const registerHandler = useCallback((type: string, callback: (payload: any) => void) => {
     if (!handlersRef.current.has(type)) {
       handlersRef.current.set(type, new Set());
     }
@@ -43,7 +50,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
     };
-  };
+  }, []);
 
   useEffect(() => {
     if (!roomId || roomId === 'offline-ai') return;
@@ -75,6 +82,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ws.onmessage = (event) => {
         try {
           const { type, payload } = JSON.parse(event.data);
+          // Despachar el mensaje a todos los handlers registrados para ese tipo
           const typeHandlers = handlersRef.current.get(type);
           if (typeHandlers) {
             typeHandlers.forEach((cb) => cb(payload));
@@ -116,7 +124,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       sendMessage('ping', {});
     }, 20000); // Ping cada 20 segundos
     return () => clearInterval(interval);
-  }, [connected]);
+  }, [connected, sendMessage]);
 
   return (
     <SocketContext.Provider value={{ socket, connected, sendMessage, registerHandler }}>
